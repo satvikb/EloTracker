@@ -22,6 +22,13 @@ let authCacheData = JSON.parse(rawCacheData);
 let matchesDownloadedData = JSON.parse(rawMatchDownloads);
 let processedMatchesData = JSON.parse(rawProcessedMatches);
 
+let rawUserStats = fs.readFileSync('private/totalStats/users.json');
+let rawHitsStats = fs.readFileSync('private/totalStats/hits.json');
+
+let totalUserStats = JSON.parse(rawUserStats);
+let totalHitsStats = JSON.parse(rawHitsStats);
+
+let PROCESSING_USER_ANALYSIS = "userAnalysis";
 let PROCESSING_HIT_ANALYSIS = "hitAnalysis";
 let PROCESSING_UTIL_ANALYSIS = "utilAnalysis";
 let PROCESSING_DISTANCE_ANALYSIS = "distanceAnalysis";
@@ -380,13 +387,18 @@ bot.on('message', async function(msg) {
     async function processAllUnprocessedGames(){
       // loop through raw files
       let rawPath = "matches/raw/"
-      const dir = await fs.promises.opendir(path)
+      const dir = await fs.promises.opendir(rawPath)
+      var gamesToProcess = 0
       for await (const dirent of dir) {
         console.log(dirent.name)
         let matchFileName = dirent.name
         let matchID = matchFileName.split(".")[0]
-        processMatchData(matchID, rawPath+matchID+".json")
+        // if(processedMatchesData[matchID] == undefined){
+          processMatchData(matchID, rawPath+matchID+".json")
+          gamesToProcess += 1
+        // }
       }
+      msg.channel.send("Processed "+gamesToProcess+" games.")
     }
 
     function processMatchData(matchID, dataPath){
@@ -394,27 +406,50 @@ bot.on('message', async function(msg) {
       if(processedMatchesData[matchID] == undefined){
         processedMatchesData[matchID] = {}
       }
-      
+
       let matchDataRaw = fs.readFileSync(dataPath);
-      let matchData = JSON.parse(matchDataRaw)
+      try{
+        let matchData = JSON.parse(matchDataRaw)
 
-      let folderPath = "matches/processed/"+matchID
-      console.log(folderPath)
-      if (!fs.existsSync(folderPath)){
-        console.log("E "+folderPath)
-          fs.mkdirSync(folderPath);
-      }
+        let folderPath = "matches/processed/"+matchID
+        console.log(folderPath)
+        if (!fs.existsSync(folderPath)){
+          console.log("E "+folderPath)
+            fs.mkdirSync(folderPath);
+        }
 
-      if(processedMatchesData[matchID][PROCESSING_HIT_ANALYSIS] == undefined){
-        processMatchHitAnalysis(folderPath, matchData)
-        processedMatchesData[matchID][PROCESSING_HIT_ANALYSIS] = 1;
-      }
-      if(processedMatchesData[matchID][PROCESSING_UTIL_ANALYSIS] == undefined){
-        processMatchHitAnalysis(folderPath, matchData)
-        processedMatchesData[matchID][PROCESSING_UTIL_ANALYSIS] = 1;
-      }
+        if(processedMatchesData[matchID][PROCESSING_HIT_ANALYSIS] == undefined){
+          processMatchHitAnalysis(folderPath, matchData)
+          processedMatchesData[matchID][PROCESSING_HIT_ANALYSIS] = 1;
+        }
 
-      fs.writeFileSync('private/processedMatches.json', JSON.stringify(processedMatchesData, null, 2) , 'utf-8');
+        if(processedMatchesData[matchID][PROCESSING_USER_ANALYSIS] == undefined){
+          processMatchUserAnalysis(folderPath, matchData)
+          processedMatchesData[matchID][PROCESSING_USER_ANALYSIS] = 1;
+        }
+
+        fs.writeFileSync('private/processedMatches.json', JSON.stringify(processedMatchesData, null, 2) , 'utf-8');
+      }catch{
+         // bad game
+      }
+    }
+
+    function processMatchUserAnalysis(folderPath, matchData){
+      let players = matchData["players"]
+      var playerData = {}
+      for(var i = 0; i < players.length; i++){
+        let playerInfo = players[i];
+        let subject = playerInfo["subject"]
+        playerData[subject] = {
+          "gameName":playerInfo["gameName"],
+          "tagLine":playerInfo["tagLine"],
+          "partyId":playerInfo["partyId"],
+          "characterId":playerInfo["characterId"],
+          "stats":playerInfo["stats"],
+          "teamId":playerInfo["teamId"]
+        }
+      }
+      fs.writeFileSync(folderPath+'/users.json', JSON.stringify(playerData, null, 2) , 'utf-8');
     }
 
     function processMatchHitAnalysis(folderPath, matchData){
@@ -445,8 +480,32 @@ bot.on('message', async function(msg) {
       fs.writeFileSync(folderPath+'/hits.json', JSON.stringify(hitsData, null, 2) , 'utf-8');
     }
 
-    function processMatchUtilAnalysis(matchData){
-
+    function processMatchUtilAnalysis(folderPath, matchData){
+      // let rounds = matchData["roundResults"]
+      // var utilData = {}
+      // for(var i = 0; i < rounds.length; i++){
+      //   let roundData = rounds[i];
+      //   let roundPlayerStats = roundData["playerStats"];
+      //   for(var j = 0; j < roundPlayerStats.length; j++){
+      //     let playerData = roundPlayerStats[j];
+      //     let subject = playerData["subject"]
+      //     let damageData = playerData["damage"];
+      //     for(var k = 0; k < damageData.length; k++){
+      //       let damageEntity = damageData[k];
+      //       if(hitsData[subject] == undefined){
+      //         hitsData[subject] = {
+      //           "headshots":0,
+      //           "bodyshots":0,
+      //           "legshots":0
+      //         }
+      //       }
+      //       hitsData[subject]["headshots"] += damageEntity["headshots"];
+      //       hitsData[subject]["bodyshots"] += damageEntity["bodyshots"];
+      //       hitsData[subject]["legshots"] += damageEntity["legshots"];
+      //     }
+      //   }
+      // }
+      // fs.writeFileSync(folderPath+'/hits.json', JSON.stringify(hitsData, null, 2) , 'utf-8');
     }
 
     function sleep(ms) {
@@ -455,6 +514,103 @@ bot.on('message', async function(msg) {
       });
     }
 
+    function computeTotalHits(){
+      let processedDir = "matches/processed/"
+      var hitsData = {}
+
+      fs.readdir(processedDir, function(err, filenames) {
+        if (err) {
+          onError(err);
+          return;
+        }
+        filenames.forEach(function(filename) {
+          console.log("FS "+filename)
+          try{
+            let rawHitsData = fs.readFileSync(processedDir + filename + "/hits.json");
+            let matchHitsData = JSON.parse(rawHitsData)
+
+            for (var subject in matchHitsData) {
+              // check if the property/key is defined in the object itself, not in parent
+              if (matchHitsData.hasOwnProperty(subject)) {
+                // console.log(subject, dictionary[subject]);
+                let damageEntity = matchHitsData[subject];
+                if(hitsData[subject] == undefined){
+                  hitsData[subject] = {
+                    "headshots":0,
+                    "bodyshots":0,
+                    "legshots":0
+                  }
+                }
+                hitsData[subject]["headshots"] += damageEntity["headshots"];
+                hitsData[subject]["bodyshots"] += damageEntity["bodyshots"];
+                hitsData[subject]["legshots"] += damageEntity["legshots"];
+              }
+            }
+          }catch{
+
+          }
+
+        });
+        totalHitsStats = hitsData;
+        fs.writeFileSync('private/totalStats/hits.json', JSON.stringify(hitsData, null, 2) , 'utf-8');
+      });
+    }
+
+    // build aliases
+    function computeTotalUsers(){
+      let processedDir = "matches/processed/"
+      var playerData = {}
+
+      fs.readdir(processedDir, function(err, filenames) {
+        if (err) {
+          onError(err);
+          return;
+        }
+        filenames.forEach(function(filename) {
+          console.log("FS "+filename)
+          try {
+            let rawUsersData = fs.readFileSync(processedDir + filename + "/users.json");
+            let matchUsersData = JSON.parse(rawUsersData)
+
+            for (var subject in matchUsersData) {
+              // check if the property/key is defined in the object itself, not in parent
+              if (matchUsersData.hasOwnProperty(subject)) {
+                // console.log(subject, dictionary[subject]);
+                let userEntity = matchUsersData[subject];
+                if(playerData[subject] == undefined){
+                  playerData[subject] = {
+                    "gameName":userEntity["gameName"],
+                    "tagLine":userEntity["tagLine"],
+                    "stats":{
+                      "kills":0,
+                      "deaths":0,
+                      "assists":0,
+                      "playtimeMillis":0,
+                      "score":0,
+                      "roundsPlayed":0 // do we even need this
+                    }
+                  }
+                }
+                playerData[subject]["stats"]["kills"] += userEntity["stats"]["kills"];
+                playerData[subject]["stats"]["score"] += userEntity["stats"]["score"];
+                playerData[subject]["stats"]["deaths"] += userEntity["stats"]["deaths"];
+                playerData[subject]["stats"]["assists"] += userEntity["stats"]["assists"];
+                playerData[subject]["stats"]["playtimeMillis"] += userEntity["stats"]["playtimeMillis"];
+                playerData[subject]["stats"]["roundsPlayed"] += userEntity["stats"]["roundsPlayed"];
+              }
+            }
+          }catch{
+
+          }
+
+        });
+        totalUserStats = playerData
+        fs.writeFileSync('private/totalStats/users.json', JSON.stringify(playerData, null, 2) , 'utf-8');
+      });
+    }
+
+    // elo = get elo
+    // gam = get all matches
     if(arg == "elo" || arg == "gam"){
       let usernameRawArg = args[1]
       if(usernameRawArg != undefined){
@@ -494,7 +650,7 @@ bot.on('message', async function(msg) {
     if(arg == "processgame" || arg == "pag"){
       if(arg == "pag"){
         // process all games
-
+        processAllUnprocessedGames()
       }else if(arg == "processgame"){
         if(args.length >= 2){
           let matchID = args[1]
@@ -502,6 +658,49 @@ bot.on('message', async function(msg) {
           processMatchData(fN,  "matches/raw/"+fN+".json")
           msg.channel.send("Processed "+matchID)
         }
+      }
+    }
+
+    if(arg == "computeall"){
+      computeTotalHits()
+      computeTotalUsers()
+    }
+
+    if(arg == "stats"){
+      let usernameRawArg = args[1]
+      if(usernameRawArg != undefined){
+        let usernameArg = usernameRawArg.toLowerCase()
+
+        var obj;
+
+        if(usernameArg.split("#").length > 1){
+          var gameName = usernameArg.split("#")[0]
+          var tagLine = usernameArg.split("#")[1]
+          Object.keys(totalUserStats).forEach(x => obj = (totalUserStats[x].gameName.toLowerCase() === gameName && totalUserStats[x].tagLine.toLowerCase() === tagLine) ? {"id":x,"obj":totalUserStats[x]}: obj);
+        }else{
+          Object.keys(totalUserStats).forEach(x => obj = totalUserStats[x].gameName.toLowerCase() === usernameRawArg ? {"id":x,"obj":totalUserStats[x]}: obj);
+        }
+        if(obj != undefined){
+          var userId = obj["id"];
+          var userObj = obj["obj"];
+          console.log(JSON.stringify(obj))
+          var userFullName = userObj["gameName"]+"#"+userObj["tagLine"]
+
+          var kills = userObj["stats"]["kills"];
+          var deaths = userObj["stats"]["deaths"]
+
+          var totalKDA = "K/D/A: "+kills+"/"+deaths+"/"+userObj["stats"]["assists"]+" (**"+(kills/deaths).toFixed(2)+"** KD)"
+          var totalPlaytimeHours = (userObj["stats"]["playtimeMillis"] / (3600*1000)).toFixed(2);
+          var score = userObj["stats"]["score"]
+          var roundsPlayed = userObj["stats"]["roundsPlayed"];
+
+          var disclaimer = "Note: These stats may not be inclusive for all matches in Act 3. Some old matches do not have data available."
+          msg.channel.send(disclaimer+"\nStats for **"+userFullName+"**\n"+totalKDA+"\n(underestimated) play time: **"+totalPlaytimeHours+"** hours\nTotal score: **"+score+"** score over **"+roundsPlayed+"** rounds played")
+          // console.log("PRinting Stats for "+obj.gameName+"#"+obj.tagLine)
+        }else{
+          msg.channel.send("User not found.")
+        }
+
       }
     }
 });
