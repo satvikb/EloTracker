@@ -17,18 +17,6 @@ let token = JSON.parse(discordTokenRaw)["key"];
 let authData = JSON.parse(rawdata);
 let authCacheData = JSON.parse(rawCacheData);
 
-/*
-fs.readFile(filePath, 'utf8', function(err, contents) {
-    if(err){
-        console.log('error!');
-    }
-    else{
-        token = contents;
-        console.log(contents);
-    }
-});
-*/
-
 var mems = [];
 var currentVoiceBans = {}
 
@@ -63,71 +51,16 @@ var RANKS = {
 bot.on('ready', function() {
     console.log("It's Working");
     bot.user.setStatus("Invisible");
-
 });
 
 bot.on('message', function(msg) {
-    if(mems.length == 0){
-      var GuildMembers = msg.guild.members.cache;
-      //console.log(lengthy);
-      // var mems = [];
-      var nicks = GuildMembers.map(g => g.user.username)
-      var lengthy = nicks.length;
-      var i;
-      for (i = 0; lengthy > i; i++) {
-          if (typeof(nicks[i]) === "string") {
-              //console.log("test");
-              if (nicks[i] != "oRgAnIc BeAnA" && nicks[i] != "irrelevant") {
-                  mems.push(nicks[i]);
-              }
-          }
-      }
-    }
-
     let args = msg.content.substring(PREFIX.length).split(" "); //returns the text after the prefix smart move by me nc
-    //console.log(args);
     var arg = ((args[0].toString()).toLowerCase());
-    //var arg = msg.split(' ')[0];
-    //msg.channel.send(arg);
+
     if (arg =='destroy') {
         msg.channel.send("Bot Restarting...")
         bot.destroy();
         bot.login(token);
-    }
-
-    if (arg == 'test') {
-        msg.channel.send("Nice bruh");
-    }
-
-    if (arg == 'help') {
-        msg.channel.send("Availible commands are (?date, ?test, ?git) and some question based commands for fun!");
-    }
-
-    if (arg == 'git') {
-        msg.channel.send("https://github.com/ha")
-    }
-
-    if (arg == "who" || arg == "whose" || arg == "which") {
-      // //msg.channel.send("testing");
-      // var GuildMembers = msg.guild.members.cache;
-      // // console.log("MSDFSD");
-      // console.log(GuildMembers);
-      // //console.log(lengthy);
-      // var mems = [];
-      // var nicks = GuildMembers.map(g => g.nickname)
-      // var lengthy = nicks.length;
-      // var i;
-      // for (i = 0; lengthy > i; i++) {
-      //     if (typeof(nicks[i]) === "string") {
-      //         //console.log("test");
-      //         if (nicks[i] != "oRgAnIc BeAnA" && nicks[i] != "irrelevant") {
-      //             mems.push(nicks[i]);
-      //         }
-      //     }
-      // }
-      // console.log(mems);
-      var person = mems[Math.floor(Math.random() * mems.length)];
-      msg.channel.send(person);
     }
 
     // TODO login caches
@@ -351,111 +284,9 @@ bot.on('message', function(msg) {
       }
     }
 
-    if (arg == "is" || arg == "will" || arg == "did") {
-        var answer;
-        if (Math.floor(Math.random() * 10) >= 5) {
-            answer = "yes";
-        } else {
-            answer = "no";
-        }
-        msg.channel.send(answer);
-    }
 
-    if(arg == "joinvc"){
-      msg.channel.send(bot.user.id)
-      if (msg.member.voice != undefined && msg.member.voice.channel) {
-         msg.member.voice.channel.join().then(connection => {
-          // Yay, it worked!
-          console.log("Successfully connected.");
-          play(connection, "https://www.youtube.com/watch?v=")
-          // connection.disconnect();
-        }).catch(e => {
-          // Oh no, it errored! Let's log it to console :)
-          console.error(e);
-        });
-    	}else{
-        if(msg.member.voice == null){
-          msg.channel.send("VC NULL for "+msg.member.voice.channel.name)
-        }
-        msg.channel.send("You are not in a vc (I will join the one you are in)");
-      }
-    }
-
-    if(arg == "leavevc"){
-      msg.channel.send("LEAVING")
-      for(let c of bot.voice.connections){
-        console.log(c);
-        c[1].disconnect();
-      }
-    }
-
-    if (arg == "muteall" || arg == "ma") {
-        let channel = msg.member.voice.channel;
-        msg.channel.send("MUTING", {"tts": true})
-
-        for (let member of channel.members) {
-          if(member[1].id != 756193373630758953){
-            member[1].voice.setMute(true)
-          }
-        }
-    }
-
-    if (arg == "unmuteall" || arg == "uma") {
-        let channel = msg.member.voice.channel;
-        msg.channel.send("UNMUTING", {"tts": true})
-        for (let member of channel.members) {
-
-          if(member[1].id != 756193373630758953){
-            member[1].voice.setMute(false)
-          }
-        }
-    }
-
-    if(arg == "banvc"){
-      let username = args[1];
-
-      var foo = new Date; // Generic JS date object
-      var unixtime_ms = foo.getTime(); // Returns milliseconds since the epoch
-      var future_unixtime_ms = unixtime_ms + 10 * 60 * 1000; // 60 seconds per minute, 1000 ms per second
-
-      currentVoiceBans[username] = future_unixtime_ms;
-      console.log("Added "+username);
-      msg.channel.send("Banning "+username+" from all voice channels for 10 minutes");
-    }
-
-    // if (arg == "mute") {
-    //     let channel = msg.member.voice.channel;
-    //     msg.channel.send("UNMUTE")
-    //     for (let member of channel.members) {
-    //         member[1].voice.setMute(false)
-    //     }
-    // }
 });
 
-bot.on("voiceStateUpdate", (oldMember, newMember) => {
-  // const newUserChannel = newMember.voice.channelID;
-  // const oldUserChannel = oldMember.voice.channelID;
 
-  var banObj = currentVoiceBans[newMember.member.user.username];
-  // console.log("VCU "+newMember.member.user.username+" B:"+(banObj != null));
-  // console.log(banObj)
-  var foo = new Date; // Generic JS date object
-  var unixtime_ms = foo.getTime(); // Returns milliseconds since the epoch
-  if(banObj != null){
-    if(unixtime_ms < banObj){
-      // user not allowed to join vc
-      newMember.setChannel(null);
-    }
-  }
-  // if(newUserChannel === '712677767333937284') {
-  //   textChannel.send(`${newMember.user.username} (${newMember.id}) has joined the channel`)
-  // } else if (oldUserChannel === '712677767333937284' && newUserChannel !== '712677767333937284') {
-  //   textChannel.send(`${newMember.user.username} (${newMember.id}) has left the channel`)
-  // }
-});
-
-async function play(connection, url) {
-  connection.play(await ytdl(url), { type: 'opus', volume: 0.01 });
-}
 
 bot.login(token);
