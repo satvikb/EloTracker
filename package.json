@@ -1,0 +1,30 @@
+{
+  "name": "discordbot",
+  "version": "1.0.0",
+  "engines": {
+    "node": "10.15.3"
+  },
+  "description": "Discord Bot",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amruth21/discordBot.git"
+  },
+  "author": "Amruth Nare",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/amruth21/discordBot/issues"
+  },
+  "homepage": "https://github.com/amruth21/discordBot#readme",
+  "dependencies": {
+    "@discordjs/opus": "^0.3.2",
+    "dateformat": "^4.4.1",
+    "discord.js": "^12",
+    "querystring": "^0.2.0",
+    "request": "^2.88.2",
+    "ytdl-core-discord": "^1.2"
+  }
+}
