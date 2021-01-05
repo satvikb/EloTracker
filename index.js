@@ -63,13 +63,108 @@ bot.on('message', function(msg) {
         bot.login(token);
     }
 
-    // TODO login caches
+    function cacheAuth(creds){
+
+    }
+
+    function getUserAuth(username, password, completion){
+      var userAuthCache = authCacheData[username]
+      var expired = true;
+      if(userAuthCache != undefined){
+        var expireDate = userAuthCache["expiry"]
+        var d = new Date();
+        var seconds = Math.round(d.getTime() / 1000);
+        if(seconds > expireDate){
+          expired = true
+        }else{
+          expired = false
+        }
+      }
+
+      if(userAuthCache != undefined && expired == false){
+        console.log("Using cache")
+        completion(userAuthCache)
+      }else{
+        // not found, get it
+
+        var cookieJar = request.jar();
+        var initialAuthOpts = {
+          uri: 'https://auth.riotgames.com/api/v1/authorization',
+          method: 'POST',
+          json: {
+            'client_id': 'play-valorant-web-prod',
+            'nonce': '1',
+            'redirect_uri': 'https://beta.playvalorant.com/opt_in',
+            'response_type': 'token id_token'
+          },
+          jar: cookieJar
+        }
+
+        request(initialAuthOpts, function(err, res, body) {
+
+          initialAuthOpts.json = {
+            'type': 'auth',
+            'username': username,
+            'password': password
+          }
+          initialAuthOpts.method = "PUT"
+          request(initialAuthOpts, function(err1, res, body1) {
+            let returnData = body1["response"]["parameters"]["uri"]
+            let rDS = returnData.split('#')[1];
+            let params = querystring.parse(rDS)
+
+            let accessToken = params["access_token"];
+            let expireTime = params["expires_in"]; // TODO add to current time and store
+
+            const entitlementsTokenOptions = {
+                url: "https://entitlements.auth.riotgames.com/api/token/v1",
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer '+accessToken,
+                    "Content-Type": "application/json"
+                },
+                json:{},
+                jar: cookieJar
+            };
+            request(entitlementsTokenOptions, function(err, res, body2) {
+              var entitlementsToken = body2["entitlements_token"]
+
+              const userInfoData = {
+                  url: "https://auth.riotgames.com/userinfo",
+                  method: 'POST',
+                  headers: {
+                      'Authorization': 'Bearer '+accessToken,
+                      "Content-Type": "application/json"
+                  },
+                  json:{},
+                  jar: cookieJar
+              };
+              request(userInfoData, function(err, res, body3) {
+                var userId = body3["sub"];
+                var d = new Date();
+                var seconds = Math.round(d.getTime() / 1000);
+                var finalExpireTime = parseInt(expireTime) + seconds;
+                var creds = {
+                  "userId":userId,
+                  "entitlementsToken":entitlementsToken,
+                  "accessToken":accessToken,
+                  "expiry":finalExpireTime
+                }
+                authCacheData[username] = creds;
+                fs.writeFileSync('private/authCache.json', JSON.stringify(authCacheData, null, 2) , 'utf-8');
+                completion(creds)
+              });
+            });
+          });
+        });
+      }
+    }
+
     if(arg == "elo"){
       let usernameRawArg = args[1]
 
       if(usernameRawArg != undefined){
         let usernameArg = usernameRawArg.toLowerCase()
-
 
         // msg.channel.send(username);
         let userData = authData["users"][usernameArg];
@@ -79,200 +174,136 @@ bot.on('message', function(msg) {
           let username = userData["username"];
           let password = userData["password"];
 
+          getUserAuth(username, password, function(creds){
+            let userId = creds["userId"];
+            let entitlementsToken = creds["entitlementsToken"];
+            let accessToken = creds["accessToken"];
+            let expiryTime = creds["expiry"];
 
-          var cookieJar = request.jar();
-          var initialAuthOpts = {
-            uri: 'https://auth.riotgames.com/api/v1/authorization',
-            method: 'POST',
-            json: {
-              'client_id': 'play-valorant-web-prod',
-              'nonce': '1',
-              'redirect_uri': 'https://beta.playvalorant.com/opt_in',
-              'response_type': 'token id_token'
-            },
-            jar: cookieJar
-          }
+            const options = {
+                url: 'https://pd.na.a.pvp.net/mmr/v1/players/'+userId+"/competitiveupdates",
+                method: 'GET',
+                headers: {
+                    "Content-Type": "application/json",
+                    'Authorization': 'Bearer '+accessToken,
+                    'X-Riot-Entitlements-JWT': entitlementsToken
+                },
+            };
 
-          request(initialAuthOpts, function(err, res, body) {
+            request(options, function(err, res, body) {
+              // console.log(err);
 
-            initialAuthOpts.json = {
-              'type': 'auth',
-              'username': username,
-              'password': password
-            }
-            initialAuthOpts.method = "PUT"
-            // console.log(JSON.stringify(body)+"XCSFS")
-            request(initialAuthOpts, function(err1, res, body1) {
-              // console.log("AUTHS "+JSON.stringify(body1)+"_"+err1)
-              let returnData = body1["response"]["parameters"]["uri"]
-              // console.log("RETURN DATA "+returnData)
-              let rDS = returnData.split('#')[1];
-              let params = querystring.parse(rDS)
-              // console.log("PARAMS "+JSON.stringify(params))
+              let json = JSON.parse(body);
+              // console.log("JSON: "+JSON.stringify(json));
+              // msg.channel.send(json);
+              let matchData = json["Matches"]
+              matchData.sort((a, b) => (a["MatchStartTime"] > b["MatchStartTime"]) ? -1 : 1)
 
-              let accessToken = params["access_token"];
-              let expireTime = params["expires_in"]; // TODO add to current time and store
+              var processedData = []
 
-              // console.log("ACCESS TOKEN:::::: "+accessToken)
-              const entitlementsTokenOptions = {
-                  url: "https://entitlements.auth.riotgames.com/api/token/v1",
-                  method: 'POST',
-                  headers: {
-                      'Authorization': 'Bearer '+accessToken,
-                      "Content-Type": "application/json"
-                  },
-                  json:{},
-                  jar: cookieJar
-              };
-              request(entitlementsTokenOptions, function(err, res, body2) {
-                // console.log(JSON.stringify(body2)+"FDSF");
-                var entitlementsToken = body2["entitlements_token"]
+              for(var i = 0; i < matchData.length; i++){
+                let latestMatchJson = matchData[i]
 
-                const userInfoData = {
-                    url: "https://auth.riotgames.com/userinfo",
-                    method: 'POST',
-                    headers: {
-                        'Authorization': 'Bearer '+accessToken,
-                        "Content-Type": "application/json"
-                    },
-                    json:{},
-                    jar: cookieJar
-                };
-                request(userInfoData, function(err, res, body3) {
-                  var userId = body3["sub"]
+                let RPBefore = latestMatchJson["TierProgressBeforeUpdate"];
+                let RPAfter = latestMatchJson["TierProgressAfterUpdate"];
+                let tierBefore = latestMatchJson["TierBeforeUpdate"]
+                let tierAfter = latestMatchJson["TierAfterUpdate"]
+                let matchDate = latestMatchJson["MatchStartTime"]
+                let matchID = latestMatchJson["MatchID"]
 
+                let eloChange;
+                var eloSign = "+"
+                if(tierBefore != tierAfter){
+                  // demote or promote
+                  if(tierBefore > tierAfter){
+                    // demote
+                    // (elo before + 100) - (elo after)
+                    eloChange = (RPBefore + 100) - RPAfter
+                    eloSign = "-" // negative sign accounted for
+                  }else{
+                    // promote
+                    //  (elo after + 100) - elo before
+                    eloChange = (RPAfter + 100) - RPBefore
 
-                  // displayUserElo(args, userId, accessToken, entitlementsToken, )
-                  // console.log(userId);
+                  }
+                }else{
+                  // same
+                  eloChange = RPAfter - RPBefore;
+                  eloSign = eloChange < 0 ? "" : "+"
+                }
 
-                  const options = {
-                      url: 'https://pd.na.a.pvp.net/mmr/v1/players/'+userId+"/competitiveupdates",
-                      method: 'GET',
-                      headers: {
-                          "Content-Type": "application/json",
-                          'Authorization': 'Bearer '+accessToken,
-                          'X-Riot-Entitlements-JWT': entitlementsToken
-                      },
-                      jar: cookieJar
-                  };
+                let rankName = RANKS[tierAfter];
+                var currentElo = (tierAfter*100) - 300 + RPAfter;
 
-                  request(options, function(err, res, body) {
-                    // console.log(err);
+                var data = {
+                  "eloChange":eloChange,
+                  "currentElo":currentElo,
+                  "rank":rankName,
+                  "date":matchDate,
+                  "eloSign":eloSign,
+                  "matchID":matchID
+                }
 
-                    let json = JSON.parse(body);
-                    // console.log("JSON: "+JSON.stringify(json));
-                    // msg.channel.send(json);
-                    let matchData = json["Matches"]
-                    matchData.sort((a, b) => (a["MatchStartTime"] > b["MatchStartTime"]) ? -1 : 1)
+                // filter out unrated
+                if(rankName != "Unrated"){
+                  processedData.push(data)
+                }
+                // console.log(username+": "+rankName+" "+currentElo+" "+RPAfter+" "+eloSign);
+                // msg.channel.send("Rank: "+rankName+"\n"+"Elo: "+currentElo+"\nLatest Game: "+eloSign+""+eloChange+" RP")
+              }
 
-                    var processedData = []
+              var numToShow = 3;
+              if(args.length >= 3){
+                let count = args[2];
+                numToShow = parseInt(count);
+              }
 
-                    for(var i = 0; i < matchData.length; i++){
-                      let latestMatchJson = json["Matches"][i]
+              var latestRank = ""
+              var latestElo = 0
 
-                      let RPBefore = latestMatchJson["TierProgressBeforeUpdate"];
-                      let RPAfter = latestMatchJson["TierProgressAfterUpdate"];
-                      let tierBefore = latestMatchJson["TierBeforeUpdate"]
-                      let tierAfter = latestMatchJson["TierAfterUpdate"]
-                      let matchDate = latestMatchJson["MatchStartTime"]
-                      let matchID = latestMatchJson["MatchID"]
+              var matchString = ""
 
-                      let eloChange;
-                      var eloSign = "+"
-                      if(tierBefore != tierAfter){
-                        // demote or promote
-                        if(tierBefore > tierAfter){
-                          // demote
-                          // (elo before + 100) - (elo after)
-                          eloChange = (RPBefore + 100) - RPAfter
-                          eloSign = "-" // negative sign accounted for
-                        }else{
-                          // promote
-                          //  (elo after + 100) - elo before
-                          eloChange = (RPAfter + 100) - RPBefore
+              var debugMode = false
+              var showAuth = false;
+              if(args.length >= 4){
+                if(args[3] == "d")
+                  debugMode = true;
+                if(args[3] == "a"){
+                  showAuth = true;
+                }
+              }
+              for(var i = 0; i < Math.min(numToShow, processedData.length); i++){
+                var currentMatchData = processedData[i]
+                var eloSign = currentMatchData["eloSign"];
+                var eloChange = currentMatchData["eloChange"];
+                var currentElo = currentMatchData["currentElo"];
+                var currentRank = currentMatchData["rank"];
+                var matchDate = currentMatchData["date"];
+                var matchID = currentMatchData["matchID"];
 
-                        }
-                      }else{
-                        // same
-                        eloChange = RPAfter - RPBefore;
-                        eloSign = eloChange < 0 ? "" : "+"
-                      }
+                if(i == 0){
+                  latestRank = currentRank
+                  latestElo = currentElo
+                }
 
-                      let rankName = RANKS[tierAfter];
-                      var currentElo = (tierAfter*100) - 300 + RPAfter;
+                var d = new Date(matchDate)
+                var day = dateFormat(d, "mm/dd/yy h:MM:ss tt");
 
-                      var data = {
-                        "eloChange":eloChange,
-                        "currentElo":currentElo,
-                        "rank":rankName,
-                        "date":matchDate,
-                        "eloSign":eloSign,
-                        "matchID":matchID
-                      }
+                var endString = debugMode ? "Match ID: "+matchID+"\n" : "\n"
+                matchString += "Comp Game started on "+day+": "+eloSign+eloChange+" RP "+endString
+              }
 
-                      // filter out unrated
-                      if(rankName != "Unrated"){
-                        processedData.push(data)
-                      }
-                      // console.log(username+": "+rankName+" "+currentElo+" "+RPAfter+" "+eloSign);
-                      // msg.channel.send("Rank: "+rankName+"\n"+"Elo: "+currentElo+"\nLatest Game: "+eloSign+""+eloChange+" RP")
-                    }
-
-                    var numToShow = 3;
-                    if(args.length >= 3){
-                      let count = args[2];
-                      numToShow = parseInt(count);
-                    }
-
-                    var latestRank = ""
-                    var latestElo = 0
-
-                    var matchString = ""
-
-                    var debugMode = false
-                    var showAuth = false;
-                    if(args.length >= 4){
-                      if(args[3] == "d")
-                        debugMode = true;
-                      if(args[3] == "a"){
-                        showAuth = true;
-                      }
-                    }
-                    for(var i = 0; i < Math.min(numToShow, processedData.length); i++){
-                      var currentMatchData = processedData[i]
-                      var eloSign = currentMatchData["eloSign"];
-                      var eloChange = currentMatchData["eloChange"];
-                      var currentElo = currentMatchData["currentElo"];
-                      var currentRank = currentMatchData["rank"];
-                      var matchDate = currentMatchData["date"];
-                      var matchID = currentMatchData["matchID"];
-
-                      if(i == 0){
-                        latestRank = currentRank
-                        latestElo = currentElo
-                      }
-
-                      var d = new Date(matchDate)
-                      var day = dateFormat(d, "mm/dd/yy h:MM:ss tt");
-
-                      var endString = debugMode ? "Match ID: "+matchID+"\n" : "\n"
-                      matchString += "Comp Game started on "+day+": "+eloSign+eloChange+" RP "+endString
-                    }
-
-                    var currentEloAddOnText = ""
-                    if(latestElo % 100 == 0){
-                      currentEloAddOnText = "(Close to Derank)"
-                    }else{
-                      currentEloAddOnText = "(**"+((100) - (latestElo % 100))+"** RP needed to rank up)"
-                    }
-                    var finalString = "**Rank data for** __***"+usernameArg+"***__\n**Current Rank:** "+latestRank+"\n**Current Elo**: "+latestElo+" RP "+currentEloAddOnText+"\n"+matchString
-                    msg.channel.send(finalString)
-                    if(showAuth){
-                      msg.channel.send("Access Token: "+accessToken+"\nEntitlement: "+entitlementsToken+"\nUser ID: "+userId)
-                    }
-                  });
-                });
-              });
+              var currentEloAddOnText = ""
+              if(latestElo % 100 == 0){
+                currentEloAddOnText = "(Close to Derank)"
+              }else{
+                currentEloAddOnText = "(**"+((100) - (latestElo % 100))+"** RP needed to rank up)"
+              }
+              var finalString = "**Rank data for** __***"+usernameArg+"***__\n**Current Rank:** "+latestRank+"\n**Current Elo**: "+latestElo+" RP "+currentEloAddOnText+"\n"+matchString
+              msg.channel.send(finalString)
+              if(showAuth){
+                msg.channel.send("Access Token: "+accessToken+"\nEntitlement: "+entitlementsToken+"\nUser ID: "+userId)
+              }
             });
           });
         }else{
