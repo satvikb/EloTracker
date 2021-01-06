@@ -107,7 +107,7 @@ bot.on('message', async function(msg) {
           json: {
             'client_id': 'play-valorant-web-prod',
             'nonce': '1',
-            'redirect_uri': 'https://beta.playvalorant.com/opt_in',
+            'redirect_uri': 'https://playvalorant.com/opt_in',
             'response_type': 'token id_token'
           },
           jar: cookieJar
@@ -123,7 +123,7 @@ bot.on('message', async function(msg) {
           initialAuthOpts.method = "PUT"
           request(initialAuthOpts, function(err1, res, body1) {
             if(body1["error"] != undefined){
-              msg.channel.send("Bad username/password. Contact account owner.")
+              msg.channel.send("Bad username/password. Contact account owner.\nThe API might also be down.")
             }else{
               let returnData = body1["response"]["parameters"]["uri"]
               let rDS = returnData.split('#')[1];
@@ -290,7 +290,7 @@ bot.on('message', async function(msg) {
           var day = dateFormat(d, "mm/dd/yy h:MM:ss tt");
 
           var endString = debugMode ? "Match ID: "+matchID+"\n" : "\n"
-          matchString += "Comp Game started on "+day+": "+eloSign+eloChange+" RP "+endString
+          matchString += "Comp Game started on "+day+": **"+eloSign+eloChange+" RP **"+endString
         }
 
         var currentEloAddOnText = ""
