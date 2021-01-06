@@ -647,6 +647,10 @@ bot.on('message', async function(msg) {
       });
     }
 
+    function cleanHSPercent(hs){
+      return ((Math.trunc(hs*10000)/10000).toFixed(4))*100;
+    }
+
     // elo = get elo
     // gam = get all matches
     if(arg == "elo" || arg == "gam"){
@@ -724,17 +728,17 @@ bot.on('message', async function(msg) {
           var userId = obj["id"];
           var userObj = obj["obj"];
 
-          var disclaimer = "**Note: These stats may not be inclusive for all matches in Act 3. Some old matches do not have data available.**\nFor now, this data only includes competitive games.\n"
+          var disclaimer = "**Note: These stats may not be inclusive for all matches in Act 3. Some old matches do not have data available.**\nFor now, this data only includes competitive games.\nStarting from Episode 2, all data should be accurate."
 
           var userFullName = userObj["gameName"]+"#"+userObj["tagLine"]
 
           var kills = userObj["stats"]["kills"];
           var deaths = userObj["stats"]["deaths"]
+          var roundsPlayed = userObj["stats"]["roundsPlayed"];
 
-          var totalKDA = "K/D/A: "+kills+"/"+deaths+"/"+userObj["stats"]["assists"]+" (**"+(userObj["stats"]["kd"]).toFixed(2)+"** KD)"
+          var totalKDA = "K/D/A: "+kills+"/"+deaths+"/"+userObj["stats"]["assists"]+" (**"+(userObj["stats"]["kd"]).toFixed(2)+"** KD) (Average Kills per Round: **"+(kills/roundsPlayed).toFixed(2)+"**)"
           var totalPlaytimeHours = (userObj["stats"]["playtimeMillis"] / (3600*1000)).toFixed(2);
           var score = userObj["stats"]["score"]
-          var roundsPlayed = userObj["stats"]["roundsPlayed"];
 
           var hitsDataForUser = totalHitsStats[userId]
           var headshots = hitsDataForUser["headshots"]
@@ -742,19 +746,118 @@ bot.on('message', async function(msg) {
           var legshots = hitsDataForUser["legshots"]
 
           var totalHits = headshots+bodyshots+legshots
-          var headshotPercent = (headshots/totalHits).toFixed(4)*100;
-          var legshotPercent = (legshots/totalHits).toFixed(4)*100;
-          var bodyshotPercent = (bodyshots/totalHits).toFixed(4)*100;
+          var headshotPercent = cleanHSPercent(headshots/totalHits);
+          var legshotPercent = cleanHSPercent(legshots/totalHits);
+          var bodyshotPercent = cleanHSPercent(bodyshots/totalHits);
 
           var hitsPercentText = "**Hit %**\nHeadshots: **"+headshotPercent+"%**\nBodyshots: **"+bodyshotPercent+"%**\nLegshots: **"+legshotPercent+"%**"
 
-          msg.channel.send(disclaimer+"\nStats for **"+userFullName+"**\n"+totalKDA+"\n(underestimated) play time: **"+totalPlaytimeHours+"** hours\nTotal score: **"+score+"** score over **"+roundsPlayed+"** rounds played\n\n"+hitsPercentText)
+          msg.channel.send(disclaimer+"\nStats for **"+userFullName+"**\n"+totalKDA+"\n(underestimated) play time: **"+totalPlaytimeHours+"** hours\nTotal score: **"+score+"** score over **"+roundsPlayed+"** rounds played. (Average score per round: **"+(score/roundsPlayed).toFixed(2)+"**)\n\n"+hitsPercentText)
           // console.log("PRinting Stats for "+obj.gameName+"#"+obj.tagLine)
         }else{
           msg.channel.send("User not found.")
         }
 
       }
+    }
+
+    if(arg == "leaderboard"){
+      var killThreshold = 100;
+      let thresholdArg = args[1]
+      if(thresholdArg != undefined){
+        killThreshold = thresholdArg
+      }
+      // HS % leaderboard
+      var hitsItems = Object.keys(totalHitsStats).map(function(key) {
+        return [key, totalHitsStats[key]];
+      });
+
+      // Sort the array based on the second element
+      hitsItems.sort(function(firstObj, secondObj) {
+        var first = firstObj[1]
+        var second = secondObj[1]
+
+        var firstTotal = first["headshots"]+first["bodyshots"]+first["legshots"]
+        var secondTotal = second["headshots"]+second["bodyshots"]+second["legshots"]
+
+        var firstHSPercent = first["headshots"] / firstTotal
+        var secondHSPercent = second["headshots"] / secondTotal
+
+        firstObj.push(firstHSPercent)
+        secondObj.push(secondHSPercent)
+
+        var firstKills = totalUserStats[firstObj[0]]["stats"]["kills"]
+        var secondKills = totalUserStats[secondObj[0]]["stats"]["kills"]
+        if(firstKills < killThreshold && secondKills < killThreshold){
+          return 0
+        }else{
+          if(firstKills < killThreshold && secondKills >= killThreshold){
+            return 1;// secondHSPercent - firstHSPercent
+          }else if(secondKills < killThreshold && firstKills >= killThreshold){
+            return -1;//firstHSPercent - secondHSPercent
+          }else{
+            return secondHSPercent - firstHSPercent
+          }
+        }
+      });
+
+      var leaderboardDataString = "__**[BETA] Headshot % Leaderboard**__\n"
+      var toPrint = hitsItems.slice(0, 15)
+      for(var i = 0; i < toPrint.length; i++){
+        var userId = toPrint[i][0]
+        var userStats = totalUserStats[userId];
+        var userFullName = userStats["gameName"]+"#"+userStats["tagLine"]
+        leaderboardDataString += ((userFullName+": ").padEnd(41))+(cleanHSPercent(toPrint[i][2]))+"%\n"
+      }
+      msg.channel.send(leaderboardDataString)
+    }
+
+    if(arg == "scores"){
+      var killThreshold = 100;
+      let thresholdArg = args[1]
+      if(thresholdArg != undefined){
+        killThreshold = thresholdArg
+      }
+      // HS % leaderboard
+      var userItems = Object.keys(totalUserStats).map(function(key) {
+        return [key, totalUserStats[key]];
+      });
+
+      // Sort the array based on the second element
+      userItems.sort(function(firstObj, secondObj) {
+        var first = firstObj[1]["stats"]
+        var second = secondObj[1]["stats"]
+
+        var firstAvg = first["score"] / first["roundsPlayed"]
+        var secondAvg = second["score"] / second["roundsPlayed"]
+
+        firstObj.push(firstAvg)
+        secondObj.push(secondAvg)
+
+        var firstKills = first["kills"]
+        var secondKills = second["kills"]
+        if(firstKills < killThreshold && secondKills < killThreshold){
+          return 0
+        }else{
+          if(firstKills < killThreshold && secondKills >= killThreshold){
+            return 1;// secondHSPercent - firstHSPercent
+          }else if(secondKills < killThreshold && firstKills >= killThreshold){
+            return -1;//firstHSPercent - secondHSPercent
+          }else{
+            return secondAvg - firstAvg
+          }
+        }
+      });
+
+      var leaderboardDataString = "__**[BETA] Average Score Per Round Leaderboard**__\n"
+      var toPrint = userItems.slice(0, 15)
+      for(var i = 0; i < toPrint.length; i++){
+        var userId = toPrint[i][0]
+        var userStats = totalUserStats[userId];
+        var userFullName = userStats["gameName"]+"#"+userStats["tagLine"]
+        leaderboardDataString += ((userFullName+": ").padEnd(41))+(toPrint[i][2].toFixed(2))+"\n"
+      }
+      msg.channel.send(leaderboardDataString)
     }
 });
 
