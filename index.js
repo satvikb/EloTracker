@@ -122,28 +122,18 @@ bot.on('message', async function(msg) {
           }
           initialAuthOpts.method = "PUT"
           request(initialAuthOpts, function(err1, res, body1) {
-            let returnData = body1["response"]["parameters"]["uri"]
-            let rDS = returnData.split('#')[1];
-            let params = querystring.parse(rDS)
+            if(body1["error"] != undefined){
+              msg.channel.send("Bad username/password. Contact account owner.")
+            }else{
+              let returnData = body1["response"]["parameters"]["uri"]
+              let rDS = returnData.split('#')[1];
+              let params = querystring.parse(rDS)
 
-            let accessToken = params["access_token"];
-            let expireTime = params["expires_in"]; // TODO add to current time and store
+              let accessToken = params["access_token"];
+              let expireTime = params["expires_in"]; // TODO add to current time and store
 
-            const entitlementsTokenOptions = {
-                url: "https://entitlements.auth.riotgames.com/api/token/v1",
-                method: 'POST',
-                headers: {
-                    'Authorization': 'Bearer '+accessToken,
-                    "Content-Type": "application/json"
-                },
-                json:{},
-                jar: cookieJar
-            };
-            request(entitlementsTokenOptions, function(err, res, body2) {
-              var entitlementsToken = body2["entitlements_token"]
-
-              const userInfoData = {
-                  url: "https://auth.riotgames.com/userinfo",
+              const entitlementsTokenOptions = {
+                  url: "https://entitlements.auth.riotgames.com/api/token/v1",
                   method: 'POST',
                   headers: {
                       'Authorization': 'Bearer '+accessToken,
@@ -152,22 +142,36 @@ bot.on('message', async function(msg) {
                   json:{},
                   jar: cookieJar
               };
-              request(userInfoData, function(err, res, body3) {
-                var userId = body3["sub"];
-                var d = new Date();
-                var seconds = Math.round(d.getTime() / 1000);
-                var finalExpireTime = parseInt(expireTime) + seconds;
-                var creds = {
-                  "userId":userId,
-                  "entitlementsToken":entitlementsToken,
-                  "accessToken":accessToken,
-                  "expiry":finalExpireTime
-                }
-                authCacheData[username] = creds;
-                fs.writeFileSync('private/authCache.json', JSON.stringify(authCacheData, null, 2) , 'utf-8');
-                completion(creds)
+              request(entitlementsTokenOptions, function(err, res, body2) {
+                var entitlementsToken = body2["entitlements_token"]
+
+                const userInfoData = {
+                    url: "https://auth.riotgames.com/userinfo",
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer '+accessToken,
+                        "Content-Type": "application/json"
+                    },
+                    json:{},
+                    jar: cookieJar
+                };
+                request(userInfoData, function(err, res, body3) {
+                  var userId = body3["sub"];
+                  var d = new Date();
+                  var seconds = Math.round(d.getTime() / 1000);
+                  var finalExpireTime = parseInt(expireTime) + seconds;
+                  var creds = {
+                    "userId":userId,
+                    "entitlementsToken":entitlementsToken,
+                    "accessToken":accessToken,
+                    "expiry":finalExpireTime
+                  }
+                  authCacheData[username] = creds;
+                  fs.writeFileSync('private/authCache.json', JSON.stringify(authCacheData, null, 2) , 'utf-8');
+                  completion(creds)
+                });
               });
-            });
+            }
           });
         });
       }
@@ -204,6 +208,8 @@ bot.on('message', async function(msg) {
           let tierAfter = latestMatchJson["TierAfterUpdate"]
           let matchDate = latestMatchJson["MatchStartTime"]
           let matchID = latestMatchJson["MatchID"]
+
+          ensureGameIsDownloaded(userId, matchID, accessToken, entitlementsToken)
 
           let eloChange;
           var eloSign = "+"
@@ -301,6 +307,16 @@ bot.on('message', async function(msg) {
       });
     }
 
+    function ensureGameIsDownloaded(userId, matchId, accessToken, entitlementsToken){
+      handleMatchDownloading(userId, matchId, accessToken, entitlementsToken, function(){
+        fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
+      }, function(){
+        fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
+      }, function(err){
+
+      })
+    }
+
     function downloadMatchData(accessToken, entitlementsToken, matchID, downloadCompletion){
       const options = {
           url: 'https://pd.na.a.pvp.net/match-details/v1/matches/'+matchID,
@@ -323,6 +339,32 @@ bot.on('message', async function(msg) {
     }
 
     var numCompleted = {}
+    async function handleMatchDownloading(userId, matchID, accessToken, entitlementsToken, matchDoneHandler, downloadCompletion, errComp){
+      try {
+        var matchPath = "matches/raw/"+matchID+".json";
+        var matchExists = fs.existsSync(matchPath)
+        // console.log("Mathc "+matchPath+" "+matchExists +" "+numCompleted[userId])
+
+        if(matchesDownloadedData[userId] == undefined){
+          matchesDownloadedData[userId] = {}
+        }
+        if (!matchExists) {
+          downloadMatchData(accessToken, entitlementsToken, matchID, function(matchID_){
+            matchesDownloadedData[userId][matchID_] = 1;
+            downloadCompletion()
+          });
+          await sleep(2000); // rate limiting
+        }else{
+          // await sleep(100)
+          matchesDownloadedData[userId][matchID] = 1;
+          // console.log("already downloaded "+matchID)
+        }
+        matchDoneHandler()
+
+      } catch(err) {
+        errComp(err)
+      }
+    }
 
     function batchDownloadMatchData(userId, accessToken, entitlementsToken, startIndex, endIndex, allMatchMsg){
       // keep getting match data until EndIndex == Total
@@ -349,35 +391,24 @@ bot.on('message', async function(msg) {
 
         for(var i = 0; i < histories.length; i++){
           let matchID = histories[i]["MatchID"]
-          try {
-            var matchPath = "matches/raw/"+matchID+".json";
-            var matchExists = fs.existsSync(matchPath)
-            console.log("Mathc "+matchPath+" "+matchExists +" "+numCompleted[userId])
-            if (!matchExists) {
-              downloadMatchData(accessToken, entitlementsToken, matchID, function(matchID_){
-                matchesDownloadedData[userId][matchID_] = 1;
-                if(numCompleted[userId] == parseInt(total)-1){
-                  fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
-                  allMatchMsg.edit("Done downloading match data. "+(numCompleted[userId]+1)+" / "+total+" matches stored.")
-                }else{
-                  allMatchMsg.edit("Downloading match data. "+numCompleted[userId]+" / "+total+" matches downloaded.")
-                }
-              });
-              await sleep(2000); // rate limiting
-            }else{
-              // await sleep(100)
-              matchesDownloadedData[userId][matchID] = 1;
-              console.log("already downloaded "+matchID)
-            }
+
+          handleMatchDownloading(userId, matchID, accessToken, entitlementsToken, function(){
             numCompleted[userId] += 1;
 
             if(numCompleted[userId] == parseInt(total)-1){
               fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
               allMatchMsg.edit("Done downloading match data. "+(numCompleted[userId]+1)+" / "+total+" matches stored.")
             }
-          } catch(err) {
+          }, function(){
+            if(numCompleted[userId] == parseInt(total)-1){
+              fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
+              allMatchMsg.edit("Done downloading match data. "+(numCompleted[userId]+1)+" / "+total+" matches stored.")
+            }else{
+              allMatchMsg.edit("Downloading match data. "+numCompleted[userId]+" / "+total+" matches downloaded.")
+            }
+          }, function(err){
             allMatchMsg.edit("ERROR CHECKING FILE EXISTS "+err)
-          }
+          })
 
           // download match every 2 seconds
         }
@@ -394,14 +425,15 @@ bot.on('message', async function(msg) {
         let matchFileName = dirent.name
         let matchID = matchFileName.split(".")[0]
         // if(processedMatchesData[matchID] == undefined){
-          processMatchData(matchID, rawPath+matchID+".json")
-          gamesToProcess += 1
+          processMatchData(matchID, rawPath+matchID+".json", function(){
+            gamesToProcess += 1
+          })
         // }
       }
-      msg.channel.send("Processed "+gamesToProcess+" games.")
+      msg.channel.send("Processed "+gamesToProcess+" competitive games.")
     }
 
-    function processMatchData(matchID, dataPath){
+    function processMatchData(matchID, dataPath, didProcess){
       console.log("Processing "+dataPath)
       if(processedMatchesData[matchID] == undefined){
         processedMatchesData[matchID] = {}
@@ -411,24 +443,29 @@ bot.on('message', async function(msg) {
       try{
         let matchData = JSON.parse(matchDataRaw)
 
-        let folderPath = "matches/processed/"+matchID
-        console.log(folderPath)
-        if (!fs.existsSync(folderPath)){
-          console.log("E "+folderPath)
-            fs.mkdirSync(folderPath);
-        }
+        let matchType = matchData["matchInfo"]["queueID"];
+        console.log("MATCH TYPE "+matchType)
+        // TODO for now only process competitive games.
+        if(matchType == "competitive"){
+          let folderPath = "matches/processed/"+matchID
+          console.log(folderPath)
+          if (!fs.existsSync(folderPath)){
+            console.log("E "+folderPath)
+              fs.mkdirSync(folderPath);
+          }
 
-        if(processedMatchesData[matchID][PROCESSING_HIT_ANALYSIS] == undefined){
-          processMatchHitAnalysis(folderPath, matchData)
-          processedMatchesData[matchID][PROCESSING_HIT_ANALYSIS] = 1;
-        }
+          if(processedMatchesData[matchID][PROCESSING_HIT_ANALYSIS] == undefined){
+            processMatchHitAnalysis(folderPath, matchData)
+            processedMatchesData[matchID][PROCESSING_HIT_ANALYSIS] = 1;
+          }
 
-        if(processedMatchesData[matchID][PROCESSING_USER_ANALYSIS] == undefined){
-          processMatchUserAnalysis(folderPath, matchData)
-          processedMatchesData[matchID][PROCESSING_USER_ANALYSIS] = 1;
+          if(processedMatchesData[matchID][PROCESSING_USER_ANALYSIS] == undefined){
+            processMatchUserAnalysis(folderPath, matchData)
+            processedMatchesData[matchID][PROCESSING_USER_ANALYSIS] = 1;
+          }
+          didProcess()
+          fs.writeFileSync('private/processedMatches.json', JSON.stringify(processedMatchesData, null, 2) , 'utf-8');
         }
-
-        fs.writeFileSync('private/processedMatches.json', JSON.stringify(processedMatchesData, null, 2) , 'utf-8');
       }catch{
          // bad game
       }
@@ -597,6 +634,7 @@ bot.on('message', async function(msg) {
                 playerData[subject]["stats"]["assists"] += userEntity["stats"]["assists"];
                 playerData[subject]["stats"]["playtimeMillis"] += userEntity["stats"]["playtimeMillis"];
                 playerData[subject]["stats"]["roundsPlayed"] += userEntity["stats"]["roundsPlayed"];
+                playerData[subject]["stats"]["kd"] = playerData[subject]["stats"]["kills"]/playerData[subject]["stats"]["deaths"];
               }
             }
           }catch{
@@ -655,8 +693,9 @@ bot.on('message', async function(msg) {
         if(args.length >= 2){
           let matchID = args[1]
           let fN = matchID
-          processMatchData(fN,  "matches/raw/"+fN+".json")
-          msg.channel.send("Processed "+matchID)
+          processMatchData(fN, "matches/raw/"+fN+".json", function(){
+            msg.channel.send("Processed "+matchID)
+          })
         }
       }
     }
@@ -664,6 +703,7 @@ bot.on('message', async function(msg) {
     if(arg == "computeall"){
       computeTotalHits()
       computeTotalUsers()
+      msg.channel.send("All stats have been computed.")
     }
 
     if(arg == "stats"){
@@ -683,19 +723,32 @@ bot.on('message', async function(msg) {
         if(obj != undefined){
           var userId = obj["id"];
           var userObj = obj["obj"];
-          console.log(JSON.stringify(obj))
+
+          var disclaimer = "**Note: These stats may not be inclusive for all matches in Act 3. Some old matches do not have data available.**\nFor now, this data only includes competitive games.\n"
+
           var userFullName = userObj["gameName"]+"#"+userObj["tagLine"]
 
           var kills = userObj["stats"]["kills"];
           var deaths = userObj["stats"]["deaths"]
 
-          var totalKDA = "K/D/A: "+kills+"/"+deaths+"/"+userObj["stats"]["assists"]+" (**"+(kills/deaths).toFixed(2)+"** KD)"
+          var totalKDA = "K/D/A: "+kills+"/"+deaths+"/"+userObj["stats"]["assists"]+" (**"+(userObj["stats"]["kd"]).toFixed(2)+"** KD)"
           var totalPlaytimeHours = (userObj["stats"]["playtimeMillis"] / (3600*1000)).toFixed(2);
           var score = userObj["stats"]["score"]
           var roundsPlayed = userObj["stats"]["roundsPlayed"];
 
-          var disclaimer = "Note: These stats may not be inclusive for all matches in Act 3. Some old matches do not have data available."
-          msg.channel.send(disclaimer+"\nStats for **"+userFullName+"**\n"+totalKDA+"\n(underestimated) play time: **"+totalPlaytimeHours+"** hours\nTotal score: **"+score+"** score over **"+roundsPlayed+"** rounds played")
+          var hitsDataForUser = totalHitsStats[userId]
+          var headshots = hitsDataForUser["headshots"]
+          var bodyshots = hitsDataForUser["bodyshots"]
+          var legshots = hitsDataForUser["legshots"]
+
+          var totalHits = headshots+bodyshots+legshots
+          var headshotPercent = (headshots/totalHits).toFixed(4)*100;
+          var legshotPercent = (legshots/totalHits).toFixed(4)*100;
+          var bodyshotPercent = (bodyshots/totalHits).toFixed(4)*100;
+
+          var hitsPercentText = "**Hit %**\nHeadshots: **"+headshotPercent+"%**\nBodyshots: **"+bodyshotPercent+"%**\nLegshots: **"+legshotPercent+"%**"
+
+          msg.channel.send(disclaimer+"\nStats for **"+userFullName+"**\n"+totalKDA+"\n(underestimated) play time: **"+totalPlaytimeHours+"** hours\nTotal score: **"+score+"** score over **"+roundsPlayed+"** rounds played\n\n"+hitsPercentText)
           // console.log("PRinting Stats for "+obj.gameName+"#"+obj.tagLine)
         }else{
           msg.channel.send("User not found.")
