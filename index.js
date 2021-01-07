@@ -43,6 +43,8 @@ let MATCHES_PROCESSED_PATH = "matches/processed/"
 let CHART_TYPE_DAMAGE = "Damage"
 let CHART_TYPE_SCORE = "Score"
 let CHART_TYPE_ECONOMY = "Economy"
+let CHART_TYPE_CARRY = "Carry"
+
 
 var mems = [];
 var currentVoiceBans = {}
@@ -319,8 +321,10 @@ bot.on('message', async function(msg) {
 
     function ensureGameIsDownloaded(userId, matchId, accessToken, entitlementsToken){
       handleMatchDownloading(userId, matchId, accessToken, entitlementsToken, function(){
-        processAllUnprocessedGames()
-        doAllComputation()
+        processMatchData(matchId, rawMatchPath(matchId), function(){
+          console.log("Processed "+matchId)
+          doAllComputation()
+        }, true)
         fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
       }, function(){
         fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
@@ -431,7 +435,7 @@ bot.on('message', async function(msg) {
       });
     }
 
-    async function processAllUnprocessedGames(){
+    async function processAllUnprocessedGames(forceProcess){
       // loop through raw files
       const dir = await fs.promises.opendir(MATCHES_RAW_PATH)
       var gamesToProcess = 0
@@ -439,17 +443,19 @@ bot.on('message', async function(msg) {
         // console.log(dirent.name)
         let matchFileName = dirent.name
         let matchID = matchFileName.split(".")[0]
-        // if(processedMatchesData[matchID] == undefined){
+        if(processedMatchesData[matchID] == undefined || forceProcess){
           processMatchData(matchID, rawMatchPath(matchID), function(){
             console.log("Processed "+matchID)
             gamesToProcess += 1
-          })
-        // }
+          }, forceProcess)
+        }
       }
-      msg.channel.send("Processed "+gamesToProcess+" competitive games.")
+      if(gamesToProcess > 0){
+        msg.channel.send("Processed "+gamesToProcess+" competitive games.")
+      }
     }
 
-    function processMatchData(matchID, dataPath, didProcess){
+    function processMatchData(matchID, dataPath, didProcess, forceProcess){
       if(processedMatchesData[matchID] == undefined){
         processedMatchesData[matchID] = {}
       }
@@ -464,6 +470,7 @@ bot.on('message', async function(msg) {
         if(matchType == "competitive"){
           console.log("Processing "+dataPath)
 
+          let matchStartTime = matchData["matchInfo"]["gameStartMillis"]
           let folderPath = MATCHES_PROCESSED_PATH+matchID
           // console.log(folderPath)
           if (!fs.existsSync(folderPath)){
@@ -471,20 +478,21 @@ bot.on('message', async function(msg) {
               fs.mkdirSync(folderPath);
           }
 
+          processedMatchesData[matchID]["gameStartMillis"] = matchStartTime
           var didProcessMatch = false;
-          if(processedMatchesData[matchID][PROCESSING_HIT_ANALYSIS] == undefined){
+          if(processedMatchesData[matchID][PROCESSING_HIT_ANALYSIS] == undefined || forceProcess){
             processMatchHitAnalysis(folderPath, matchData)
             processedMatchesData[matchID][PROCESSING_HIT_ANALYSIS] = 1;
             didProcessMatch = true;
           }
 
-          if(processedMatchesData[matchID][PROCESSING_USER_ANALYSIS] == undefined){
+          if(processedMatchesData[matchID][PROCESSING_USER_ANALYSIS] == undefined || forceProcess){
             processMatchUserAnalysis(folderPath, matchData)
             processedMatchesData[matchID][PROCESSING_USER_ANALYSIS] = 1;
             didProcessMatch = true;
           }
 
-          if(processedMatchesData[matchID][PROCESSING_ROUND_ANALYSIS] == undefined){
+          if(processedMatchesData[matchID][PROCESSING_ROUND_ANALYSIS] == undefined || forceProcess){
             processMatchRoundsAnalysis(folderPath, matchData)
             processedMatchesData[matchID][PROCESSING_ROUND_ANALYSIS] = 1;
             didProcessMatch = true;
@@ -561,6 +569,7 @@ bot.on('message', async function(msg) {
 
       var roundDataFinal = {}
       var roundWinInfo = {}
+      var roundScoreTotals = {}
       for(var i = 0; i < rounds.length; i++){
         let roundData = rounds[i];
 
@@ -578,6 +587,11 @@ bot.on('message', async function(msg) {
           if(roundDataFinal[subject] == undefined){
             roundDataFinal[subject] = []
           }
+
+          if(roundScoreTotals[subject] == undefined){
+            roundScoreTotals[subject] = 0
+          }
+          roundScoreTotals[subject] += score
 
           var roundPlayerData = {}
 
@@ -653,6 +667,7 @@ bot.on('message', async function(msg) {
       }
       allRoundDataFinal["winResults"] = roundWinInfo
       allRoundDataFinal["roundInfo"] = roundDataFinal
+      allRoundDataFinal["scoreTotals"] = roundScoreTotals
       console.log("ROUND STATS DATA "+folderPath)
       fs.writeFileSync(folderPath+'/roundStats.json', JSON.stringify(allRoundDataFinal, null, 2) , 'utf-8');
     }
@@ -791,12 +806,15 @@ bot.on('message', async function(msg) {
         let teamInfo = roundData["teamInfo"]
         let winResults = roundData["winResults"]
         let roundInfo = roundData["roundInfo"]
+        let scoreTotals = roundData["scoreTotals"]
 
         let numberOfRounds = Object.keys(winResults).length
         // TODO user users.json roundsPlayed > 40 to filter
 
         var damageDatasetData = {}
         var scoreDatasetData = {}
+        var carryDatasetData = {}
+        var finalCarryData = []
 
         var subjectIdOfOurPlayer = ""
         for (var subjectId in roundInfo) {
@@ -823,6 +841,7 @@ bot.on('message', async function(msg) {
                 }
                 damageDatasetData[playerGameName][roundNumber] = subjectData["damage"]["total"]
                 scoreDatasetData[playerGameName][roundNumber] = subjectData["score"]
+                carryDatasetData[playerGameName] = scoreTotals[subjectId]
               }
             }
           }
@@ -836,6 +855,9 @@ bot.on('message', async function(msg) {
             break;
           case CHART_TYPE_SCORE:
             datasetToUse = scoreDatasetData
+            break;
+          case CHART_TYPE_CARRY:
+
             break;
           case CHART_TYPE_ECONOMY:
             // datasetToUse = scoreDatasetData
@@ -856,10 +878,36 @@ bot.on('message', async function(msg) {
           var didWinRound = roundWinner == teamOfOurPlayer
           ourTeamScore += didWinRound ? 1 : 0
           enemyTeamScore += didWinRound ? 0 : 1
-          chartXLabels.push((didWinRound ? "Won" : "Lost")+" ("+(r+1)+")")
+
+          if(analysisType == CHART_TYPE_SCORE || analysisType == CHART_TYPE_DAMAGE || analysisType == CHART_TYPE_ECONOMY){
+            chartXLabels.push((didWinRound ? "Won" : "Lost")+" ("+(r+1)+")")
+          }
         }
+
+        var highestCarry = ""
+        var carryScoreHighest = 0
+        if(analysisType == CHART_TYPE_CARRY){
+          for (var playerName in carryDatasetData) {
+            // check if the property/key is defined in the object itself, not in parent
+            if (carryDatasetData.hasOwnProperty(playerName)) {
+              chartXLabels.push(playerName)
+              var score = carryDatasetData[playerName]
+              if(score > carryScoreHighest){
+                carryScoreHighest = score
+                highestCarry = playerName
+              }
+              finalCarryData.push(score)
+            }
+          }
+        }
+
         var matchResult = (ourTeamScore > enemyTeamScore) ? "Won" : ((ourTeamScore == enemyTeamScore) ? "Draw" : "Lost")
-        var chart = buildChartObject(analysisType+" chart for match ("+matchResult+" "+ourTeamScore+"-"+enemyTeamScore+")", chartXLabels, datasetToUse)
+        var chart;
+        if(analysisType == CHART_TYPE_SCORE || analysisType == CHART_TYPE_DAMAGE || analysisType == CHART_TYPE_ECONOMY){
+          chart = buildChartObject("line", analysisType+" chart for match ("+matchResult+" "+ourTeamScore+"-"+enemyTeamScore+")", chartXLabels, datasetToUse)
+        }else if(analysisType == CHART_TYPE_CARRY){
+          chart = buildChartObject("doughnut", analysisType+" chart for match ("+matchResult+" "+ourTeamScore+"-"+enemyTeamScore+")", chartXLabels, {"data":finalCarryData}, highestCarry)
+        }
         var chartURL = chartURLFromObject(chart, function(url){
           console.log(url)
           msg.channel.send(url)
@@ -875,7 +923,7 @@ bot.on('message', async function(msg) {
         return 'rgba(' + o(r()*s) + ',' + o(r()*s) + ',' + o(r()*s) + ', 0.5)';
     }
 
-    function buildChartObject(title, xLabels, datasets){
+    function buildChartObject(chartType, title, xLabels, datasets, doughnutMainLabel){
       var chartOptions = {
         "responsive":true,
         "title":{
@@ -886,7 +934,11 @@ bot.on('message', async function(msg) {
           "mode":"index",
           "intersect": true
         },
-        "plugins": {
+        "plugins":{}
+      }
+
+      if(chartType == "line"){
+        chartOptions["plugins"] = {
           "datalabels": {
             "display": function(context) {
               var index = context.dataIndex;
@@ -896,25 +948,36 @@ bot.on('message', async function(msg) {
             "align": 'top',
             "backgroundColor": 'transparent',
             "borderRadius": 3
+          }
+        }
+      }else if(chartType == "doughnut"){
+        chartOptions["plugins"] = {
+          "datalabels": {
+            "formatter": (value) => {
+              return value + ' score';
+            },
+            "color":"white",
+            "font":{
+              "weight":"bold"
+            }
           },
-        }//,
-        // "scales": {
-        //     // "yAxes": [{
-        //     //     "ticks": {
-        //     //         "beginAtZero":true,
-        //     //         "fontColor": 'red'
-        //     //     },
-        //     // }],
-        //   "xAxes": [{
-        //         "ticks": {
-        //             "fontColor": function(context){
-        //               var index = context.dataIndex;
-        //               var value = context.dataset.data[index];
-        //               return value.includes("ost") ? "red" : "green"
-        //             }
-        //         },
-        //     }]
-        // }
+          "doughnutlabel": {
+            "labels":[
+              {
+                "text":doughnutMainLabel,
+                "font":{
+                  "size":20
+                }
+              },
+              {
+                "text":"carry"
+              }
+            ],
+            "align": 'center',
+            "backgroundColor": 'transparent',
+            "borderRadius": 3
+          }
+        }
       }
 
       var chartDatasetArray = []
@@ -924,7 +987,7 @@ bot.on('message', async function(msg) {
         if (datasets.hasOwnProperty(playerName)) {
 
           var datasetObject = {
-            "type": "line",
+            "type": chartType,
             "label": playerName,
             "borderColor": random_rgba(),
             // "backgroundColor": "rgb(255, 99, 132)",
@@ -938,7 +1001,7 @@ bot.on('message', async function(msg) {
       }
 
       var chartObject = {
-        "type":"line",
+        "type":chartType,
         "data":{
           "labels":xLabels,
           "datasets":chartDatasetArray
@@ -1023,10 +1086,10 @@ bot.on('message', async function(msg) {
       }
     }
 
-    if(arg == "processgame" || arg == "pag"){
+    if(arg == "processgame" || arg == "pag" || arg == "fpag"){
       if(arg == "pag"){
         // process all games
-        processAllUnprocessedGames()
+        processAllUnprocessedGames(false)
       }else if(arg == "processgame"){
         if(args.length >= 2){
           let matchID = args[1]
@@ -1034,6 +1097,9 @@ bot.on('message', async function(msg) {
             msg.channel.send("Processed "+matchID)
           })
         }
+      }else if(arg == "fpag"){
+        console.log("Force")
+        processAllUnprocessedGames(true)
       }
     }
 
@@ -1192,7 +1258,7 @@ bot.on('message', async function(msg) {
       msg.channel.send(leaderboardDataString)
     }
 
-    if(arg == "damage" || arg == "score"){// || arg == "analyze"){
+    if(arg == "damage" || arg == "score" || arg == "carry"){// || arg == "analyze"){
       let matchID = args[1]
       if(matchID != undefined){
         analyzeMatchRoundData(matchID, capitalize(arg))
