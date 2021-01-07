@@ -13,6 +13,7 @@ let rawdata = fs.readFileSync('private/valAuths.json');
 let rawCacheData = fs.readFileSync('private/authCache.json');
 let rawMatchDownloads = fs.readFileSync('private/matchesDownloaded.json');
 let rawProcessedMatches = fs.readFileSync('private/processedMatches.json');
+// let rawPlayerAliases = fs.readFileSync('private/playerAliases.json');
 
 let discordTokenRaw = fs.readFileSync('secret.json');
 
@@ -21,6 +22,7 @@ let authData = JSON.parse(rawdata);
 let authCacheData = JSON.parse(rawCacheData);
 let matchesDownloadedData = JSON.parse(rawMatchDownloads);
 let processedMatchesData = JSON.parse(rawProcessedMatches);
+// let playerAliases = JSON.parse(rawPlayerAliases);
 
 let rawUserStats = fs.readFileSync('private/totalStats/users.json');
 let rawHitsStats = fs.readFileSync('private/totalStats/hits.json');
@@ -30,9 +32,12 @@ let totalHitsStats = JSON.parse(rawHitsStats);
 
 let PROCESSING_USER_ANALYSIS = "userAnalysis";
 let PROCESSING_HIT_ANALYSIS = "hitAnalysis";
+let PROCESSING_ROUND_ANALYSIS = "utilAnalysis";
 let PROCESSING_UTIL_ANALYSIS = "utilAnalysis";
 let PROCESSING_DISTANCE_ANALYSIS = "distanceAnalysis";
 
+let MATCHES_RAW_PATH = "matches/raw/"
+let MATCHES_PROCESSED_PATH = "matches/processed/"
 
 var mems = [];
 var currentVoiceBans = {}
@@ -328,7 +333,7 @@ bot.on('message', async function(msg) {
           },
       };
       request(options, function(err, res, body) {
-        fs.writeFile('matches/raw/'+matchID+'.json', body, 'utf8', function (err) {
+        fs.writeFile(rawMatchPath(matchID), body, 'utf8', function (err) {
             if (err) {
               console.log(err);
             }else{
@@ -338,10 +343,14 @@ bot.on('message', async function(msg) {
       });
     }
 
+    function rawMatchPath(matchID){
+      return MATCHES_RAW_PATH+matchID+'.json'
+    }
+
     var numCompleted = {}
     async function handleMatchDownloading(userId, matchID, accessToken, entitlementsToken, matchDoneHandler, downloadCompletion, errComp){
       try {
-        var matchPath = "matches/raw/"+matchID+".json";
+        var matchPath = rawMatchPath(matchID);
         var matchExists = fs.existsSync(matchPath)
         // console.log("Mathc "+matchPath+" "+matchExists +" "+numCompleted[userId])
 
@@ -417,15 +426,15 @@ bot.on('message', async function(msg) {
 
     async function processAllUnprocessedGames(){
       // loop through raw files
-      let rawPath = "matches/raw/"
-      const dir = await fs.promises.opendir(rawPath)
+      const dir = await fs.promises.opendir(MATCHES_RAW_PATH)
       var gamesToProcess = 0
       for await (const dirent of dir) {
-        console.log(dirent.name)
+        // console.log(dirent.name)
         let matchFileName = dirent.name
         let matchID = matchFileName.split(".")[0]
         // if(processedMatchesData[matchID] == undefined){
-          processMatchData(matchID, rawPath+matchID+".json", function(){
+          processMatchData(matchID, rawMatchPath(matchID), function(){
+            console.log("Processed "+matchID)
             gamesToProcess += 1
           })
         // }
@@ -434,7 +443,6 @@ bot.on('message', async function(msg) {
     }
 
     function processMatchData(matchID, dataPath, didProcess){
-      console.log("Processing "+dataPath)
       if(processedMatchesData[matchID] == undefined){
         processedMatchesData[matchID] = {}
       }
@@ -444,11 +452,13 @@ bot.on('message', async function(msg) {
         let matchData = JSON.parse(matchDataRaw)
 
         let matchType = matchData["matchInfo"]["queueID"];
-        console.log("MATCH TYPE "+matchType)
+        // console.log("MATCH TYPE "+matchType)
         // TODO for now only process competitive games.
         if(matchType == "competitive"){
-          let folderPath = "matches/processed/"+matchID
-          console.log(folderPath)
+          console.log("Processing "+dataPath)
+
+          let folderPath = MATCHES_PROCESSED_PATH+matchID
+          // console.log(folderPath)
           if (!fs.existsSync(folderPath)){
             console.log("E "+folderPath)
               fs.mkdirSync(folderPath);
@@ -463,11 +473,17 @@ bot.on('message', async function(msg) {
             processMatchUserAnalysis(folderPath, matchData)
             processedMatchesData[matchID][PROCESSING_USER_ANALYSIS] = 1;
           }
+
+          // if(processedMatchesData[matchID][PROCESSING_ROUND_ANALYSIS] == undefined){
+            processMatchRoundsAnalysis(folderPath, matchData)
+            processedMatchesData[matchID][PROCESSING_ROUND_ANALYSIS] = 1;
+          // }
           didProcess()
           fs.writeFileSync('private/processedMatches.json', JSON.stringify(processedMatchesData, null, 2) , 'utf-8');
         }
-      }catch{
+      }catch(err){
          // bad game
+         console.log("ERROR "+err)
       }
     }
 
@@ -517,6 +533,113 @@ bot.on('message', async function(msg) {
       fs.writeFileSync(folderPath+'/hits.json', JSON.stringify(hitsData, null, 2) , 'utf-8');
     }
 
+    function processMatchRoundsAnalysis(folderPath, matchData){
+      var allRoundDataFinal = {}
+
+      let matchPlayers = matchData["players"]
+      var teamInfo = {}
+      for(var p = 0; p < matchPlayers.length; p++){
+        teamInfo[matchPlayers[p]["subject"]] = matchPlayers[p]["teamId"]
+      }
+
+      allRoundDataFinal["teamInfo"] = teamInfo
+
+      let rounds = matchData["roundResults"]
+
+      var roundDataFinal = {}
+      var roundWinInfo = {}
+      for(var i = 0; i < rounds.length; i++){
+        let roundData = rounds[i];
+
+        let roundNum = roundData["roundNum"]
+        let winningTeam = roundData["winningTeam"]
+        roundWinInfo[""+roundNum] = winningTeam
+
+        let roundPlayerStats = roundData["playerStats"];
+        for(var j = 0; j < roundPlayerStats.length; j++){
+          let playerData = roundPlayerStats[j];
+          let subject = playerData["subject"];
+
+          if(roundDataFinal[subject] == undefined){
+            roundDataFinal[subject] = []
+          }
+
+          var roundPlayerData = {}
+
+          roundPlayerData["roundNum"] = roundNum
+          roundPlayerData["winningTeam"] = roundNum
+          // compute damage breakdown
+          roundPlayerData["damage"] = {}
+          roundPlayerData["damage"]["total"] = 0;
+          let damageData = playerData["damage"];
+          var damageBreakdown = []
+          for(var k = 0; k < damageData.length; k++){
+            let damageEntity = damageData[k];
+            let breakdownEntity = {
+              "receiver":damageEntity["receiver"],
+              "damage":damageEntity["damage"]
+            }
+            roundPlayerData["damage"]["total"] += damageEntity["damage"]
+            damageBreakdown.push(breakdownEntity)
+          }
+          roundPlayerData["damage"]["breakdown"] = damageBreakdown
+
+          // compute kills
+          var killBreakdown = []
+          let killData = playerData["kills"]
+          for(var k = 0; k < killData.length; k++){
+            let killEntity = killData[k]
+            let roundTime = killEntity["roundTime"]
+            let gameTime = killEntity["gameTime"]
+            let victim = killEntity["victim"]
+            let killer = killEntity["killer"]
+            let victimLocation = killEntity["victimLocation"]
+
+            let killerLocation = {}
+            var playerLocations = killEntity["playerLocations"]
+            for(var l = 0; l < playerLocations.length; l++){
+              let playerLocation = playerLocations[l];
+              let playerLocationSubject = playerLocation["subject"]
+
+              if(playerLocationSubject == killer){
+                killerLocation["x"] = playerLocation["location"]["x"]
+                killerLocation["y"] = playerLocation["location"]["y"]
+                killerLocation["viewRadians"] = playerLocation["viewRadians"]
+                break;
+              }
+            }
+
+            var playerKillData = {}
+            playerKillData["roundTime"] = roundTime
+            playerKillData["gameTime"] = gameTime
+            playerKillData["victim"] = victim
+            playerKillData["victimLocation"] = victimLocation
+            playerKillData["killerLocation"] = killerLocation
+            killBreakdown.push(playerKillData)
+
+          }
+          roundPlayerData["kills"] = killBreakdown
+
+          // economy breakdown
+          var economyBreakdown = {}
+          var economyData = playerData["economy"]
+
+          economyBreakdown["value"] = economyData["loadoutValue"]
+          economyBreakdown["remaining"] = economyData["remaining"]
+          economyBreakdown["spent"] = economyData["spent"]
+          economyBreakdown["weapon"] = economyData["weapon"]
+          economyBreakdown["armor"] = economyData["armor"]
+          roundPlayerData["economy"] = economyBreakdown
+
+          roundDataFinal[subject].push(roundPlayerData)
+        }
+      }
+      allRoundDataFinal["winResults"] = roundWinInfo
+      allRoundDataFinal["roundInfo"] = roundDataFinal
+      console.log("ROUND STATS DATA "+folderPath)
+      fs.writeFileSync(folderPath+'/roundStats.json', JSON.stringify(allRoundDataFinal, null, 2) , 'utf-8');
+    }
+
     function processMatchUtilAnalysis(folderPath, matchData){
       // let rounds = matchData["roundResults"]
       // var utilData = {}
@@ -552,18 +675,16 @@ bot.on('message', async function(msg) {
     }
 
     function computeTotalHits(){
-      let processedDir = "matches/processed/"
       var hitsData = {}
 
-      fs.readdir(processedDir, function(err, filenames) {
+      fs.readdir(MATCHES_PROCESSED_PATH, function(err, filenames) {
         if (err) {
           onError(err);
           return;
         }
         filenames.forEach(function(filename) {
-          console.log("FS "+filename)
           try{
-            let rawHitsData = fs.readFileSync(processedDir + filename + "/hits.json");
+            let rawHitsData = fs.readFileSync(MATCHES_PROCESSED_PATH + filename + "/hits.json");
             let matchHitsData = JSON.parse(rawHitsData)
 
             for (var subject in matchHitsData) {
@@ -595,18 +716,16 @@ bot.on('message', async function(msg) {
 
     // build aliases
     function computeTotalUsers(){
-      let processedDir = "matches/processed/"
       var playerData = {}
 
-      fs.readdir(processedDir, function(err, filenames) {
+      fs.readdir(MATCHES_PROCESSED_PATH, function(err, filenames) {
         if (err) {
           onError(err);
           return;
         }
         filenames.forEach(function(filename) {
-          console.log("FS "+filename)
           try {
-            let rawUsersData = fs.readFileSync(processedDir + filename + "/users.json");
+            let rawUsersData = fs.readFileSync(MATCHES_PROCESSED_PATH + filename + "/users.json");
             let matchUsersData = JSON.parse(rawUsersData)
 
             for (var subject in matchUsersData) {
@@ -696,8 +815,7 @@ bot.on('message', async function(msg) {
       }else if(arg == "processgame"){
         if(args.length >= 2){
           let matchID = args[1]
-          let fN = matchID
-          processMatchData(fN, "matches/raw/"+fN+".json", function(){
+          processMatchData(matchID, rawMatchPath(matchID), function(){
             msg.channel.send("Processed "+matchID)
           })
         }
@@ -858,6 +976,15 @@ bot.on('message', async function(msg) {
         leaderboardDataString += ((userFullName+": ").padEnd(41))+(toPrint[i][2].toFixed(2))+"\n"
       }
       msg.channel.send(leaderboardDataString)
+    }
+
+    if(arg == "analyze"){
+      let matchID = args[1]
+      if(matchID != undefined){
+
+      }else{
+        msg.channel.send("Please provide a match ID");
+      }
     }
 });
 
