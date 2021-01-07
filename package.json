@@ -23,6 +23,7 @@
     "@discordjs/opus": "^0.3.2",
     "dateformat": "^4.4.1",
     "discord.js": "^12",
+    "javascript-stringify": "^2.0.1",
     "querystring": "^0.2.0",
     "request": "^2.88.2",
     "ytdl-core-discord": "^1.2"
