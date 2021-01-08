@@ -10,10 +10,12 @@ const request = require('request');
 const querystring = require('querystring');
 var dateFormat = require('dateformat');
 
-let rawdata = fs.readFileSync('private/valAuths.json');
+let rawdata = fs.readFileSync('private/static/valAuths.json');
 let rawCacheData = fs.readFileSync('private/authCache.json');
 let rawMatchDownloads = fs.readFileSync('private/matchesDownloaded.json');
 let rawProcessedMatches = fs.readFileSync('private/processedMatches.json');
+let rawCompHistory = fs.readFileSync('private/compHistory.json');
+
 // let rawPlayerAliases = fs.readFileSync('private/playerAliases.json');
 
 let discordTokenRaw = fs.readFileSync('secret.json');
@@ -23,6 +25,8 @@ let authData = JSON.parse(rawdata);
 let authCacheData = JSON.parse(rawCacheData);
 let matchesDownloadedData = JSON.parse(rawMatchDownloads);
 let processedMatchesData = JSON.parse(rawProcessedMatches);
+let compHistoryData = JSON.parse(rawCompHistory);
+
 // let playerAliases = JSON.parse(rawPlayerAliases);
 
 let rawUserStats = fs.readFileSync('private/totalStats/users.json');
@@ -45,6 +49,15 @@ let CHART_TYPE_SCORE = "Score"
 let CHART_TYPE_ECONOMY = "Economy"
 let CHART_TYPE_CARRY = "Carry"
 
+let COMP_INC_MAJOR = "MAJOR_INCREASE"
+let COMP_DEC_MAJOR = "MAJOR_DECREASE"
+let COMP_DRAW = "STABLE"
+let COMP_INC_MINOR = "MINOR_INCREASE"
+let COMP_DEC_MINOR = "MINOR_DECREASE"
+let COMP_INCRASE = "MAJOR_DECREASE"
+let COMP_DECREASE = "MAJOR_DECREASE"
+let COMP_PROMOTED = "PROMOTED"
+let COMP_DEMOTED = "DEMOTED"
 
 var mems = [];
 var currentVoiceBans = {}
@@ -189,6 +202,49 @@ bot.on('message', async function(msg) {
       }
     }
 
+    function saveCompHistory(userId, matches){
+      if(compHistoryData[userId] == undefined){
+        compHistoryData[userId] = {}
+      }
+      if(compHistoryData[userId]["Matches"] == undefined){
+        compHistoryData[userId]["Matches"] = {}
+      }
+
+      for(var i = 0; i < matches.length; i++){
+        var match = matches[i]
+        var matchId = match["MatchID"]
+        var tierAfter = match["TierAfterUpdate"]
+        if(tierAfter > 0){ // only store actual comp games
+          compHistoryData[userId]["Matches"][matchId] = match
+        }
+      }
+
+      var compItems = Object.keys(compHistoryData[userId]["Matches"]).map(function(key) {
+        return [key, compHistoryData[userId]["Matches"][key]];
+      });
+
+      // Sort the array based on the second element
+      compItems.sort(function(firstObj, secondObj) {
+        var firstMatch = firstObj[1]
+        var secondMatch = secondObj[1]
+
+        return secondMatch["MatchStartTime"] - firstMatch["MatchStartTime"]
+      })
+
+      var matchSortArray = []
+      for(var i = 0; i < compItems.length; i++){
+        var match = compItems[i][1]
+        var matchId = match["MatchID"]
+        matchSortArray.push(matchId)
+      }
+
+      compHistoryData[userId]["MatchSort"] = matchSortArray
+
+      fs.writeFile('private/compHistory.json', JSON.stringify(compHistoryData, null, 2), function(err){
+        console.log("Wrote comp history for "+userId+". Error: "+err)
+      });
+    }
+
     function displayUserElo(userId, usernameArg, accessToken, entitlementsToken){
       const options = {
           url: 'https://pd.na.a.pvp.net/mmr/v1/players/'+userId+"/competitiveupdates",
@@ -201,25 +257,46 @@ bot.on('message', async function(msg) {
       };
 
       request(options, function(err, res, body) {
-        // console.log(err);
-
         let json = JSON.parse(body);
-        // console.log("JSON: "+JSON.stringify(json));
-        // msg.channel.send(json);
+
         let matchData = json["Matches"]
         matchData.sort((a, b) => (a["MatchStartTime"] > b["MatchStartTime"]) ? -1 : 1)
 
-        var processedData = []
+        saveCompHistory(userId, matchData)
 
-        for(var i = 0; i < matchData.length; i++){
-          let latestMatchJson = matchData[i]
+        var numToShow = 3;
+        if(args.length >= 3){
+          let count = args[2];
+          numToShow = parseInt(count);
+        }
+        var matchSortArray = compHistoryData[userId]["MatchSort"]
+        var numOfMatchesAvailable = matchSortArray.length
+        // var processedData = []
 
+        var latestRank = ""
+        var latestElo = 0
+
+        var matchString = ""
+
+        var debugMode = false
+        var showAuth = false;
+        if(args.length >= 4){
+          if(args[3] == "d")
+            debugMode = true;
+          if(args[3] == "a"){
+            showAuth = true;
+          }
+        }
+
+        for(var i = 0; i < Math.min(numToShow, numOfMatchesAvailable); i++){
+          let latestMatchJson = compHistoryData[userId]["Matches"][matchSortArray[i]]//matchData[i]
           let RPBefore = latestMatchJson["TierProgressBeforeUpdate"];
           let RPAfter = latestMatchJson["TierProgressAfterUpdate"];
           let tierBefore = latestMatchJson["TierBeforeUpdate"]
           let tierAfter = latestMatchJson["TierAfterUpdate"]
           let matchDate = latestMatchJson["MatchStartTime"]
           let matchID = latestMatchJson["MatchID"]
+          let competitiveMovement = latestMatchJson["CompetitiveMovement"]
 
           ensureGameIsDownloaded(userId, matchID, accessToken, entitlementsToken)
 
@@ -247,54 +324,8 @@ bot.on('message', async function(msg) {
           let rankName = RANKS[tierAfter];
           var currentElo = (tierAfter*100) - 300 + RPAfter;
 
-          var data = {
-            "eloChange":eloChange,
-            "currentElo":currentElo,
-            "rank":rankName,
-            "date":matchDate,
-            "eloSign":eloSign,
-            "matchID":matchID
-          }
-
-          // filter out unrated
-          if(rankName != "Unrated"){
-            processedData.push(data)
-          }
-          // console.log(username+": "+rankName+" "+currentElo+" "+RPAfter+" "+eloSign);
-          // msg.channel.send("Rank: "+rankName+"\n"+"Elo: "+currentElo+"\nLatest Game: "+eloSign+""+eloChange+" RP")
-        }
-
-        var numToShow = 3;
-        if(args.length >= 3){
-          let count = args[2];
-          numToShow = parseInt(count);
-        }
-
-        var latestRank = ""
-        var latestElo = 0
-
-        var matchString = ""
-
-        var debugMode = false
-        var showAuth = false;
-        if(args.length >= 4){
-          if(args[3] == "d")
-            debugMode = true;
-          if(args[3] == "a"){
-            showAuth = true;
-          }
-        }
-        for(var i = 0; i < Math.min(numToShow, processedData.length); i++){
-          var currentMatchData = processedData[i]
-          var eloSign = currentMatchData["eloSign"];
-          var eloChange = currentMatchData["eloChange"];
-          var currentElo = currentMatchData["currentElo"];
-          var currentRank = currentMatchData["rank"];
-          var matchDate = currentMatchData["date"];
-          var matchID = currentMatchData["matchID"];
-
           if(i == 0){
-            latestRank = currentRank
+            latestRank = rankName
             latestElo = currentElo
           }
 
