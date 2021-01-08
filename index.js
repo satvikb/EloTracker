@@ -203,6 +203,7 @@ bot.on('message', async function(msg) {
     }
 
     function saveCompHistory(userId, matches){
+      var totalSaved = 0;
       if(compHistoryData[userId] == undefined){
         compHistoryData[userId] = {}
       }
@@ -216,6 +217,7 @@ bot.on('message', async function(msg) {
         var tierAfter = match["TierAfterUpdate"]
         if(tierAfter > 0){ // only store actual comp games
           compHistoryData[userId]["Matches"][matchId] = match
+          totalSaved += 1
         }
       }
 
@@ -243,6 +245,7 @@ bot.on('message', async function(msg) {
       fs.writeFile('private/compHistory.json', JSON.stringify(compHistoryData, null, 2), function(err){
         console.log("Wrote comp history for "+userId+". Error: "+err)
       });
+      return totalSaved
     }
 
     function displayUserElo(userId, usernameArg, accessToken, entitlementsToken){
@@ -415,6 +418,58 @@ bot.on('message', async function(msg) {
       } catch(err) {
         errComp(err)
       }
+    }
+
+    function batchSaveCompHistory(userId, accessToken, entitlementsToken){
+      var totalSaved = 0;
+      async function downloadCompHistory(matchTotal, startIndex, endIndex){
+        if(endIndex > matchTotal){
+          endIndex = matchTotal
+        }
+        const matchCompHistoryOptions = {
+            url: 'https://pd.na.a.pvp.net/mmr/v1/players/'+userId+"/competitiveupdates?startIndex="+startIndex+"&endIndex="+endIndex,
+            method: 'GET',
+            headers: {
+                "Content-Type": "application/json",
+                'Authorization': 'Bearer '+accessToken,
+                'X-Riot-Entitlements-JWT': entitlementsToken
+            },
+        };
+        request(matchCompHistoryOptions, async function(err, res, body) {
+          let compHistoryData = JSON.parse(body);
+          let matches = compHistoryData["Matches"]
+          if(matches != undefined){
+            console.log(JSON.stringify(matches))
+            totalSaved += saveCompHistory(userId, matches)
+            console.log("Got Comp history till "+endIndex)
+
+            if(endIndex != matchTotal){
+              downloadCompHistory(matchTotal, startIndex+20, endIndex+20)
+              await sleep(1000)
+            }else{
+              msg.channel.send("Got rank data for "+totalSaved+" competitive games")
+            }
+          }else{
+            msg.channel.send("Got rank data for "+totalSaved+" competitive games")
+          }
+        })
+      }
+
+      const matchHistoryOptions = {
+          url: 'https://pd.na.a.pvp.net/match-history/v1/history/'+userId+"?startIndex=0&endIndex=2",
+          method: 'GET',
+          headers: {
+              "Content-Type": "application/json",
+              'Authorization': 'Bearer '+accessToken,
+              'X-Riot-Entitlements-JWT': entitlementsToken
+          },
+      };
+      request(matchHistoryOptions, async function(err, res, body) {
+        let historyData = JSON.parse(body);
+        let total = historyData["Total"]
+        console.log("Downloading comp history with total "+total)
+        downloadCompHistory(total, 0, 20)
+      })
     }
 
     function batchDownloadMatchData(userId, accessToken, entitlementsToken, startIndex, endIndex, allMatchMsg){
@@ -1081,7 +1136,7 @@ bot.on('message', async function(msg) {
     }
     // elo = get elo
     // gam = get all matches
-    if(arg == "elo" || arg == "gam"){
+    if(arg == "elo" || arg == "gam" || arg == "uocm"){
       let usernameRawArg = args[1]
       if(usernameRawArg != undefined){
         let usernameArg = usernameRawArg.toLowerCase()
@@ -1107,6 +1162,8 @@ bot.on('message', async function(msg) {
               }
 
               batchDownloadMatchData(userId, accessToken, entitlementsToken, 0, 20, allMatchMsg)
+            }else if(arg == "uocm"){ // update old comp matches
+              batchSaveCompHistory(userId, accessToken, entitlementsToken)
             }
           });
         }else{
