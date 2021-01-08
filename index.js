@@ -278,6 +278,7 @@ bot.on('message', async function(msg) {
 
         var latestRank = ""
         var latestElo = 0
+        var latestTier = 0
 
         var matchString = ""
 
@@ -291,7 +292,10 @@ bot.on('message', async function(msg) {
           }
         }
 
-        for(var i = 0; i < Math.min(numToShow, numOfMatchesAvailable); i++){
+        var numMatchesToShow = Math.min(numToShow, numOfMatchesAvailable)
+
+        var embedFieldArray = []
+        for(var i = 0; i < numMatchesToShow; i++){
           let latestMatchJson = compHistoryData[userId]["Matches"][matchSortArray[i]]//matchData[i]
           let RPBefore = latestMatchJson["TierProgressBeforeUpdate"];
           let RPAfter = latestMatchJson["TierProgressAfterUpdate"];
@@ -330,14 +334,21 @@ bot.on('message', async function(msg) {
           if(i == 0){
             latestRank = rankName
             latestElo = currentElo
+            latestTier = tierAfter
           }
 
           var d = new Date(matchDate)
-          var day = dateFormat(d, "mm/dd/yy h:MM:ss tt");
+          // var day = dateFormat(d, "mm/dd/yy h:MM:ss tt");
+          var fieldDay = dateFormat(d, "m/d h:MMtt");
 
-          var endString = debugMode ? "Match ID: "+matchID+"\n" : "\n"
-          matchString += "Comp Game started on "+day+": **"+eloSign+eloChange+" RP **"+endString
+          var endString = debugMode ? " Match ID: "+matchID+"" : ""
+          // matchString += "Comp Game started on "+day+": **"+eloSign+eloChange+" RP **"+endString
+
+          var embedFieldObject = {name:"**"+eloSign+eloChange+" RP **", value:fieldDay+endString, inline: debugMode ? false : true}
+          embedFieldArray.push(embedFieldObject)
         }
+        var userStats = totalUserStats[userId];
+        var userFullName = userStats["gameName"]+"#"+userStats["tagLine"]
 
         var currentEloAddOnText = ""
         if(latestElo % 100 == 0){
@@ -345,8 +356,31 @@ bot.on('message', async function(msg) {
         }else{
           currentEloAddOnText = "(**"+((100) - (latestElo % 100))+"** RP needed to rank up)"
         }
-        var finalString = "**Rank data for** __***"+usernameArg+"***__\n**Current Rank:** "+latestRank+"\n**Current Elo**: "+latestElo+" RP "+currentEloAddOnText+"\n"+matchString
-        msg.channel.send(finalString)
+
+        const rankImage = new discord.MessageAttachment('private/static/images/TX_CompetitiveTier_Large_'+latestTier+".png", 'rank.png');
+        const embed = new discord.MessageEmbed()
+              .setColor('#0099ff')
+              .setTitle('Total Elo: '+latestElo+" RP ")
+              // .setURL('https://discord.js.org/')
+              .setAuthor(userFullName, '', '')
+              .setDescription(latestRank+" "+currentEloAddOnText)
+              .addField('Competitive history for the last '+numMatchesToShow+" matches:", "⠀", false)
+              .addFields(embedFieldArray)
+              // .addField("\u200B", "\u200B", false)
+              // .addField(latestRank, currentEloAddOnText, false)
+              // .addField('Inline field title', 'Some value here', true)
+              // .setImage('https://i.imgur.com/wSTFkRM.png')
+              // .setTimestamp()
+              // .setFooter('Some footer text here', 'https://i.imgur.com/wSTFkRM.png')
+              // .setTitle('Wicked Sweet Title')
+              .attachFiles(rankImage)
+              .setThumbnail('attachment://rank.png');
+
+        msg.channel.send({embed});
+
+
+        // var finalString = "**Rank data for** __***"+usernameArg+"***__\n**Current Rank:** "+latestRank+"\n**Current Elo**: "+latestElo+" RP "+currentEloAddOnText+"\n"+matchString
+        // msg.channel.send(finalString)
         if(showAuth){
           msg.channel.send("Access Token: "+accessToken+"\nEntitlement: "+entitlementsToken+"\nUser ID: "+userId)
         }
