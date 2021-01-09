@@ -51,16 +51,23 @@ let CHART_TYPE_CARRY = "Carry"
 
 let COMP_INC_MAJOR = "MAJOR_INCREASE"
 let COMP_DEC_MAJOR = "MAJOR_DECREASE"
-let COMP_DRAW = "STABLE"
 let COMP_INC_MINOR = "MINOR_INCREASE"
 let COMP_DEC_MINOR = "MINOR_DECREASE"
-let COMP_INCRASE = "MAJOR_DECREASE"
-let COMP_DECREASE = "MAJOR_DECREASE"
+let COMP_INCRASE = "INCREASE"
+let COMP_DECREASE = "DECREASE"
 let COMP_PROMOTED = "PROMOTED"
 let COMP_DEMOTED = "DEMOTED"
+let COMP_DRAW = "STABLE"
 
-var mems = [];
-var currentVoiceBans = {}
+let EMOJI_COMP_INC_MAJOR = "<:rank_major_increase:797332822859055104> "
+let EMOJI_COMP_DEC_MAJOR = "<:rank_major_decrease:797316110482538526> "
+let EMOJI_COMP_INC_MINOR = "<:rank_minor_increase:797323018120331285> "
+let EMOJI_COMP_DEC_MINOR = "<:rank_minor_decrease:797322976022364170> "
+let EMOJI_COMP_INCRASE = "<:rank_medium_increase:797332778730782721> "
+let EMOJI_COMP_DECREASE = "<:rank_medium_decrease:797322863722889257> "
+let EMOJI_COMP_PROMOTED = "<:rank_promote:797348352664272947>"
+let EMOJI_COMP_DEMOTED = "<:rank_demote:797348431609593856>"
+let EMOJI_COMP_DRAW = "<:rank_stable:797332889971720213>"
 
 var RANKS = {
   "0": "Unrated",
@@ -242,9 +249,7 @@ bot.on('message', async function(msg) {
 
       compHistoryData[userId]["MatchSort"] = matchSortArray
 
-      fs.writeFile('private/compHistory.json', JSON.stringify(compHistoryData, null, 2), function(err){
-        console.log("Wrote comp history for "+userId+". Error: "+err)
-      });
+      fs.writeFileSync('private/compHistory.json', JSON.stringify(compHistoryData, null, 2), 'utf-8');
       return totalSaved
     }
 
@@ -343,12 +348,52 @@ bot.on('message', async function(msg) {
 
           var endString = debugMode ? " Match ID: "+matchID+"" : ""
           // matchString += "Comp Game started on "+day+": **"+eloSign+eloChange+" RP **"+endString
+          var compMovementEmoji = ""
+          switch(competitiveMovement){
+            case COMP_PROMOTED:
+              compMovementEmoji = EMOJI_COMP_PROMOTED
+              break;
+            case COMP_INC_MAJOR:
+              compMovementEmoji = EMOJI_COMP_INC_MAJOR
+              break;
+            case COMP_INCRASE:
+              compMovementEmoji = EMOJI_COMP_INCRASE
+              break;
+            case COMP_INC_MINOR:
+              compMovementEmoji = EMOJI_COMP_INC_MINOR
+              break;
+            case COMP_DEC_MINOR:
+              compMovementEmoji = EMOJI_COMP_DEC_MINOR
+              break;
+            case COMP_DECREASE:
+              compMovementEmoji = EMOJI_COMP_DECREASE
+              break;
+            case COMP_DEC_MAJOR:
+              compMovementEmoji = EMOJI_COMP_DEC_MAJOR
+              break;
+            case COMP_DEMOTED:
+              compMovementEmoji = EMOJI_COMP_DEMOTED
+              break;
+            case COMP_DRAW:
+              compMovementEmoji = EMOJI_COMP_DRAW
+              break;
+            default:
+            // case "MOVEMENT_UNKNOWN":
+              break;
 
-          var embedFieldObject = {name:"**"+eloSign+eloChange+" RP **", value:fieldDay+endString, inline: debugMode ? false : true}
+          }
+
+          var embedFieldObject = {name:compMovementEmoji+"**"+eloSign+eloChange+" RP **", value:fieldDay+endString, inline: debugMode ? false : true}
           embedFieldArray.push(embedFieldObject)
         }
         var userStats = totalUserStats[userId];
-        var userFullName = userStats["gameName"]+"#"+userStats["tagLine"]
+        var userFullName;
+        if(userStats != undefined){
+          userFullName = userStats["gameName"]+"#"+userStats["tagLine"]
+        }else{
+          // new user
+          userFullName = usernameArg
+        }
 
         var currentEloAddOnText = ""
         if(latestElo % 100 == 0){
@@ -357,7 +402,7 @@ bot.on('message', async function(msg) {
           currentEloAddOnText = "(**"+((100) - (latestElo % 100))+"** RP needed to rank up)"
         }
 
-        const rankImage = new discord.MessageAttachment('private/static/images/TX_CompetitiveTier_Large_'+latestTier+".png", 'rank.png');
+        const rankImage = new discord.MessageAttachment('images/TX_CompetitiveTier_Large_'+latestTier+".png", 'rank.png');
         const embed = new discord.MessageEmbed()
               .setColor('#0099ff')
               .setTitle('Total Elo: '+latestElo+" RP ")
