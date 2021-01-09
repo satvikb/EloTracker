@@ -106,6 +106,11 @@ bot.on('message', async function(msg) {
     let args = msg.content.substring(PREFIX.length).split(" "); //returns the text after the prefix smart move by me nc
     var arg = ((args[0].toString()).toLowerCase());
 
+    if(msg.member.id == 303249695386501122){
+        msg.channel.send("You are not allowed to use this bot. 😊")
+        return;
+    }
+
     if (arg =='destroy') {
         msg.channel.send("Bot Restarting...")
         bot.destroy();
@@ -264,7 +269,7 @@ bot.on('message', async function(msg) {
           },
       };
 
-      request(options, function(err, res, body) {
+      request(options, async function(err, res, body) {
         let json = JSON.parse(body);
 
         let matchData = json["Matches"]
@@ -421,8 +426,16 @@ bot.on('message', async function(msg) {
               .attachFiles(rankImage)
               .setThumbnail('attachment://rank.png');
 
-        msg.channel.send({embed});
+        var sentEmbed = await msg.channel.send({embed});
 
+
+        var eloData = getCompEloHistoryList(userId)
+        var eloChart = buildEloChart(eloData, userFullName, "#0099ff")
+        var chartURL = chartURLFromObject(eloChart, function(url){
+          console.log(url)
+          embed.setImage(url)
+          sentEmbed.edit(embed)
+        })
 
         // var finalString = "**Rank data for** __***"+usernameArg+"***__\n**Current Rank:** "+latestRank+"\n**Current Elo**: "+latestElo+" RP "+currentEloAddOnText+"\n"+matchString
         // msg.channel.send(finalString)
@@ -437,7 +450,7 @@ bot.on('message', async function(msg) {
         processMatchData(matchId, rawMatchPath(matchId), function(){
           console.log("Processed "+matchId)
           doAllComputation()
-        }, true)
+        }, false)
         fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
       }, function(){
         fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
@@ -633,7 +646,6 @@ bot.on('message', async function(msg) {
         // console.log("MATCH TYPE "+matchType)
         // TODO for now only process competitive games.
         if(matchType == "competitive"){
-          console.log("Processing "+dataPath)
 
           let matchStartTime = matchData["matchInfo"]["gameStartMillis"]
           let folderPath = MATCHES_PROCESSED_PATH+matchID
@@ -666,6 +678,7 @@ bot.on('message', async function(msg) {
             didProcess()
           }
           fs.writeFileSync('private/processedMatches.json', JSON.stringify(processedMatchesData, null, 2) , 'utf-8');
+          console.log("Handled "+dataPath+", processed: "+didProcessMatch)
         }
       }catch(err){
          // bad game
@@ -863,6 +876,36 @@ bot.on('message', async function(msg) {
       //   }
       // }
       // fs.writeFileSync(folderPath+'/hits.json', JSON.stringify(hitsData, null, 2) , 'utf-8');
+    }
+
+    function eloFromCompInfo(matchInfo){
+      let RPAfter = matchInfo["TierProgressAfterUpdate"];
+      let tierAfter = matchInfo["TierAfterUpdate"]
+      var currentElo = (tierAfter*100) - 300 + RPAfter;
+      return currentElo
+    }
+
+    function getCompEloHistoryList(userId){
+      // return array of elo in order as int array [1234, 1255, ...]
+      // first is newest, right is oldest
+      let compHistory = compHistoryData[userId]
+      let matchSort = compHistory["MatchSort"]
+      var eloArray = []
+      var dateArray = []
+      for(var i = 0; i < matchSort.length; i++){
+        var matchId = matchSort[i]
+        var matchData = compHistory["Matches"][matchId]
+        var matchStartDate = matchData["MatchStartTime"]
+
+        eloArray.push(eloFromCompInfo(matchData))
+
+        var d = new Date(matchStartDate)
+        // var day = dateFormat(d, "mm/dd/yy h:MM:ss tt");
+        var matchDay = dateFormat(d, "m/d");
+
+        dateArray.push(matchDay)
+      }
+      return {"dates":dateArray, "elo":eloArray}
     }
 
     function sleep(ms) {
@@ -1123,7 +1166,8 @@ bot.on('message', async function(msg) {
             },
             "color":"white",
             "font":{
-              "weight":"bold"
+              "weight":"bold",
+              "size":10
             }
           },
           "doughnutlabel": {
@@ -1156,7 +1200,7 @@ bot.on('message', async function(msg) {
             "label": playerName,
             "borderColor": random_rgba(),
             // "backgroundColor": "rgb(255, 99, 132)",
-            "borderWidth": 1,
+            "borderWidth": chartType == "doughnut" ? 0 : 1,
             "fill": false,
             "data": datasets[playerName]
           }
@@ -1174,6 +1218,74 @@ bot.on('message', async function(msg) {
         "options":chartOptions
       }
       console.log("CHART: "+JSON.stringify(chartObject))
+      return chartObject
+    }
+
+    function buildEloChart(eloData, userName, userColor){
+      var eloMin = Math.min(...eloData["elo"])
+      var eloMax = Math.max(...eloData["elo"])
+
+
+      var chartOptions = {
+        "responsive":true,
+        "title":{
+          "display":true,
+          "text":"Elo History for "+userName
+        },
+        "tooltips": {
+          "mode":"index",
+          "intersect": true
+        },
+        "legend":{
+          "display":false
+        },
+        "plugins":{},
+        "scales":{
+          "yAxes":[{
+            "ticks":{
+              "min": Math.floor(eloMin / 10) * 10,
+              "max": Math.ceil(eloMax / 10) * 10,
+              "stepSize": 50,
+              // "display":function(context) {
+              //   var index = context.dataIndex;
+              //   var value = context.dataset.data[index];
+              //   return parseInt(value) % 50 == 0 ? true : false;
+              // }
+            }
+          }]
+        }
+      }
+      chartOptions["plugins"] = {
+        "datalabels": {
+          "display": false,
+          "align": 'top',
+          "backgroundColor": 'transparent',
+          "borderRadius": 3
+        }
+      }
+
+      var chartDatasetArray = []
+      var datasetObject = {
+        "label": "",
+        "borderColor": userColor,
+        // "backgroundColor": "rgb(255, 99, 132)",
+        "fill": false,
+        "data": eloData["elo"]
+      }
+      // TODO negative dataset
+      chartDatasetArray.push(datasetObject)
+
+
+
+      var chartObject = {
+        "type":"line",
+        "data":{
+          "labels":eloData["dates"],//Array.from(Array(eloData.length).keys()),
+          "datasets":chartDatasetArray
+        },
+        "options":chartOptions
+      }
+      // console.log("CHART: "+JSON.stringify(chartObject))
       return chartObject
     }
 
@@ -1262,7 +1374,7 @@ bot.on('message', async function(msg) {
           let matchID = args[1]
           processMatchData(matchID, rawMatchPath(matchID), function(){
             msg.channel.send("Processed "+matchID)
-          })
+          }, true)
         }
       }else if(arg == "fpag"){
         console.log("Force")
