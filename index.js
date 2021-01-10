@@ -10,6 +10,7 @@ const request = require('request');
 const querystring = require('querystring');
 var dateFormat = require('dateformat');
 
+let rawUserColors = fs.readFileSync('private/userColors.json');
 let rawdata = fs.readFileSync('private/static/valAuths.json');
 let rawCacheData = fs.readFileSync('private/authCache.json');
 let rawMatchDownloads = fs.readFileSync('private/matchesDownloaded.json');
@@ -20,6 +21,7 @@ let rawCompHistory = fs.readFileSync('private/compHistory.json');
 
 let discordTokenRaw = fs.readFileSync('secret.json');
 
+let userColorsData = JSON.parse(rawUserColors);
 let token = JSON.parse(discordTokenRaw)["key"];
 let authData = JSON.parse(rawdata);
 let authCacheData = JSON.parse(rawCacheData);
@@ -106,10 +108,13 @@ bot.on('message', async function(msg) {
     let args = msg.content.substring(PREFIX.length).split(" "); //returns the text after the prefix smart move by me nc
     var arg = ((args[0].toString()).toLowerCase());
 
+    var userCanUseBot = true;
     if(msg.member.id == 303249695386501122){
-        msg.channel.send("You are not allowed to use this bot. 😊")
-        return;
+      userCanUseBot = false;
+
     }
+
+    var userColor = userColorsData[msg.member.id] == undefined ? "#0099ff" : userColorsData[msg.member.id]
 
     if (arg =='destroy') {
         msg.channel.send("Bot Restarting...")
@@ -297,7 +302,7 @@ bot.on('message', async function(msg) {
         if(args.length >= 4){
           if(args[3] == "d")
             debugMode = true;
-          if(args[3] == "a"){
+          if(args[3] == "a" && msg.member.id == 295701594715062272){
             showAuth = true;
           }
         }
@@ -409,7 +414,7 @@ bot.on('message', async function(msg) {
 
         const rankImage = new discord.MessageAttachment('images/TX_CompetitiveTier_Large_'+latestTier+".png", 'rank.png');
         const embed = new discord.MessageEmbed()
-              .setColor('#0099ff')
+              .setColor(userColor)
               .setTitle('Total Elo: '+latestElo+" RP ")
               // .setURL('https://discord.js.org/')
               .setAuthor(userFullName, '', '')
@@ -430,7 +435,7 @@ bot.on('message', async function(msg) {
 
 
         var eloData = getCompEloHistoryList(userId)
-        var eloChart = buildEloChart(eloData, userFullName, "#0099ff")
+        var eloChart = buildEloChart(eloData, userFullName, userColor)
         var chartURL = chartURLFromObject(eloChart, function(url){
           console.log(url)
           embed.setImage(url)
@@ -1225,12 +1230,19 @@ bot.on('message', async function(msg) {
       var eloMin = Math.min(...eloData["elo"])
       var eloMax = Math.max(...eloData["elo"])
 
+      var sum = 0;
+      for(var i = 0; i < eloData["elo"].length; i++){
+        sum += eloData["elo"][i]
+      }
+      var average = sum / eloData["elo"].length
 
+      var averageRankNum = Math.floor((average/100))+3;
+      var averageRankText = RANKS[""+averageRankNum]
       var chartOptions = {
         "responsive":true,
         "title":{
           "display":true,
-          "text":"Elo History for "+userName
+          "text":"Elo History for "+userName+" (Average Elo: "+Math.round(average)+", average rank: "+averageRankText+")"
         },
         "tooltips": {
           "mode":"index",
@@ -1270,7 +1282,7 @@ bot.on('message', async function(msg) {
         "borderColor": userColor,
         // "backgroundColor": "rgb(255, 99, 132)",
         "fill": false,
-        "data": eloData["elo"]
+        "data": eloData["elo"].reverse()
       }
       // TODO negative dataset
       chartDatasetArray.push(datasetObject)
@@ -1280,7 +1292,7 @@ bot.on('message', async function(msg) {
       var chartObject = {
         "type":"line",
         "data":{
-          "labels":eloData["dates"],//Array.from(Array(eloData.length).keys()),
+          "labels":eloData["dates"].reverse(),//Array.from(Array(eloData.length).keys()),
           "datasets":chartDatasetArray
         },
         "options":chartOptions
@@ -1328,6 +1340,10 @@ bot.on('message', async function(msg) {
     // elo = get elo
     // gam = get all matches
     if(arg == "elo" || arg == "gam" || arg == "uocm"){
+      if(!userCanUseBot){
+        msg.channel.send("You are not allowed to use this bot. 😊")
+        return;
+      }
       let usernameRawArg = args[1]
       if(usernameRawArg != undefined){
         let usernameArg = usernameRawArg.toLowerCase()
@@ -1538,11 +1554,31 @@ bot.on('message', async function(msg) {
     }
 
     if(arg == "damage" || arg == "score" || arg == "carry"){// || arg == "analyze"){
+      if(!userCanUseBot){
+        msg.channel.send("You are not allowed to use this bot. 😊")
+        return;
+      }
       let matchID = args[1]
       if(matchID != undefined){
         analyzeMatchRoundData(matchID, capitalize(arg))
       }else{
         msg.channel.send("Please provide a match ID");
+      }
+    }
+
+    if(arg == "setcolor"){
+      if(!userCanUseBot){
+        msg.channel.send("You are not allowed to use this bot. 😊")
+        return;
+      }
+      var colorInput = args[1]
+      var isColor = /^#[0-9A-F]{6}$/i.test(colorInput)
+      if(isColor){
+        userColorsData[msg.member.id] = colorInput
+        fs.writeFileSync('private/userColors.json', JSON.stringify(userColorsData, null, 2) , 'utf-8');
+        msg.channel.send("Color set.")
+      }else{
+        msg.channel.send("Not a valid color")
       }
     }
 });
