@@ -21,6 +21,7 @@
   "homepage": "https://github.com/amruth21/discordBot#readme",
   "dependencies": {
     "@discordjs/opus": "^0.3.2",
+    "ascii-table": "0.0.9",
     "dateformat": "^4.4.1",
     "discord.js": "^12",
     "javascript-stringify": "^2.0.1",

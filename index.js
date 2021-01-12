@@ -3,6 +3,7 @@ const bot = new discord.Client();
 const fs = require('fs');
 const path = require('path');
 const { stringify } = require("javascript-stringify");
+var AsciiTable = require('ascii-table')
 
 const PREFIX = '?';
 const ytdl = require('ytdl-core-discord');
@@ -111,10 +112,9 @@ bot.on('message', async function(msg) {
     var userCanUseBot = true;
     if(msg.member.id == 303249695386501122){
       userCanUseBot = false;
-
     }
 
-    var userColor = userColorsData[msg.member.id] == undefined ? "#0099ff" : userColorsData[msg.member.id]
+    var userColor = userColorsData[msg.member.id] == undefined ? "#000000" : userColorsData[msg.member.id]
 
     if (arg =='destroy') {
         msg.channel.send("Bot Restarting...")
@@ -453,14 +453,14 @@ bot.on('message', async function(msg) {
     function ensureGameIsDownloaded(userId, matchId, accessToken, entitlementsToken){
       handleMatchDownloading(userId, matchId, accessToken, entitlementsToken, function(){
         processMatchData(matchId, rawMatchPath(matchId), function(){
-          console.log("Processed "+matchId)
+          bot.channels.cache.get("798343660001165332").send("Processed match "+matchID_+" for user "+userId);
           doAllComputation()
         }, false)
         fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
       }, function(){
         fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
       }, function(err){
-
+        bot.channels.cache.get("798343660001165332").send("Error ensuring game is downloaded "+err);
       })
     }
 
@@ -479,7 +479,7 @@ bot.on('message', async function(msg) {
             if (err) {
               console.log(err);
             }else{
-              downloadCompletion(matchID)
+              downloadCompletion(matchID, body)
             }
         });
       });
@@ -500,9 +500,15 @@ bot.on('message', async function(msg) {
           matchesDownloadedData[userId] = {}
         }
         if (!matchExists) {
-          downloadMatchData(accessToken, entitlementsToken, matchID, function(matchID_){
+          downloadMatchData(accessToken, entitlementsToken, matchID, function(matchID_, matchData){
             matchesDownloadedData[userId][matchID_] = 1;
             downloadCompletion()
+
+            let matchDate = matchData["MatchStartTime"]
+            var d = new Date(matchDate)
+            var matchDayStr = dateFormat(d, "m/d h:MMtt");
+
+            bot.channels.cache.get("798343660001165332").send("Downloaded match "+matchID_+" ("+matchDayStr+") for user "+userId);
           });
           await sleep(2000); // rate limiting
         }else{
@@ -589,6 +595,8 @@ bot.on('message', async function(msg) {
           // download next batch
           batchDownloadMatchData(userId, accessToken, entitlementsToken, startIndex+20, endIndex+20, allMatchMsg)
         }
+
+        bot.channels.cache.get("798343660001165332").send("Batch downloading for user "+userId+" from "+startIndex+" to "+endIndex);
 
         let histories = historyData["History"];
 
@@ -1324,8 +1332,19 @@ bot.on('message', async function(msg) {
       // return "https://quickchart.io/chart?bkg=white&c="+encodeURIComponent(JSON.stringify(chartObject))
     }
 
+    function buildAsciiTable(title, tableHeaders, data){
+      var table = new AsciiTable().fromJSON({
+        title:title,
+        heading: tableHeaders,
+        rows: data
+      })
+      return table.toString()
+    }
+
     function cleanHSPercent(hs){
-      return ((Math.trunc(hs*10000)/10000).toFixed(4))*100;
+      var num = ((hs*100).toFixed(2))
+      return num;
+      // return ((Math.floor(hs*10000)/10000).toFixed(4))*100;
     }
 
     const capitalize = (s) => {
@@ -1336,6 +1355,7 @@ bot.on('message', async function(msg) {
     function doAllComputation(){
       computeTotalHits()
       computeTotalUsers()
+      bot.channels.cache.get("798343660001165332").send("Computed all stats");
     }
     // elo = get elo
     // gam = get all matches
@@ -1454,7 +1474,7 @@ bot.on('message', async function(msg) {
       }
     }
 
-    if(arg == "leaderboard"){
+    if(arg == "headshots"){
       var killThreshold = 100;
       let thresholdArg = args[1]
       if(thresholdArg != undefined){
@@ -1494,15 +1514,18 @@ bot.on('message', async function(msg) {
         }
       });
 
-      var leaderboardDataString = "__**[BETA] Headshot % Leaderboard**__\n"
       var toPrint = hitsItems.slice(0, 15)
+      var finalDataArray = []
       for(var i = 0; i < toPrint.length; i++){
         var userId = toPrint[i][0]
         var userStats = totalUserStats[userId];
         var userFullName = userStats["gameName"]+"#"+userStats["tagLine"]
-        leaderboardDataString += ((userFullName+": ").padEnd(41))+(cleanHSPercent(toPrint[i][2]))+"%\n"
+        var num = ((toPrint[i][2]*100).toFixed(2))+"%"
+        finalDataArray.push([userFullName, num])
       }
-      msg.channel.send(leaderboardDataString)
+
+      var str = buildAsciiTable("Headshot % Leaderboard", ["Name", "HS %"], finalDataArray)
+      msg.channel.send("`"+str+"`")
     }
 
     if(arg == "scores"){
@@ -1511,7 +1534,7 @@ bot.on('message', async function(msg) {
       if(thresholdArg != undefined){
         killThreshold = thresholdArg
       }
-      // HS % leaderboard
+
       var userItems = Object.keys(totalUserStats).map(function(key) {
         return [key, totalUserStats[key]];
       });
@@ -1542,15 +1565,18 @@ bot.on('message', async function(msg) {
         }
       });
 
-      var leaderboardDataString = "__**[BETA] Average Score Per Round Leaderboard**__\n"
       var toPrint = userItems.slice(0, 15)
+      var finalDataArray = []
       for(var i = 0; i < toPrint.length; i++){
         var userId = toPrint[i][0]
         var userStats = totalUserStats[userId];
         var userFullName = userStats["gameName"]+"#"+userStats["tagLine"]
-        leaderboardDataString += ((userFullName+": ").padEnd(41))+(toPrint[i][2].toFixed(2))+"\n"
+        var num = (toPrint[i][2].toFixed(2))
+        finalDataArray.push([userFullName, num])
       }
-      msg.channel.send(leaderboardDataString)
+
+      var str = buildAsciiTable("Average score per round", ["Name", "Score"], finalDataArray)
+      msg.channel.send("`"+str+"`")
     }
 
     if(arg == "damage" || arg == "score" || arg == "carry"){// || arg == "analyze"){
@@ -1580,6 +1606,35 @@ bot.on('message', async function(msg) {
       }else{
         msg.channel.send("Not a valid color")
       }
+    }
+
+    if(arg == "commands"){
+      var helpString = "Elo Tracker Commands:\n"
+      helpString += "**?elo** commands\n"
+      helpString += "?elo <name> Get the latest Elo and rank of a user, along with their Elo history graph and the results of their 3 latest games\n"
+      helpString += "?elo <name> <number of matches> Same as above, but choose how many maches to show\n"
+      helpString += "?elo <name> <number of matches> d The d stands for 'debug', show the same info but show Match IDs\n"
+
+      helpString += "\n"
+
+      helpString += "?stats <name or InGameName#TagLine> Display the cummulative stats of a user. Including KDA, playtime, hit percentages, and score\n"
+
+      helpString += "\n"
+
+      helpString += "?headshots Show the headshot % leaderboard\n"
+      helpString += "?scores Show the average score per round leaderboard\n"
+
+      helpString += "\n"
+
+      helpString += "?damage <Match ID> Display a damage chart per round for your team for a certain match\n"
+      helpString += "?score <Match ID> Display a score chart per round of your teammates for a certain match\n"
+      helpString += "?carry <Match ID> View who has the most score in a match in a chart\n"
+
+      helpString += "\n"
+
+      helpString += "?setcolor <Hex Color> Set the highlight color of the embed and the graph color when you ask for elo\n"
+
+      msg.channel.send(helpString)
     }
 });
 
