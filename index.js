@@ -111,7 +111,7 @@ bot.on('message', async function(msg) {
 
     var userCanUseBot = true;
     if(msg.member.id == 303249695386501122 || msg.member.id == 166999847277297664){
-      userCanUseBot = false;
+      userCanUseBot = true;
     }
 
     var userColor = userColorsData[msg.member.id] == undefined ? "#000000" : userColorsData[msg.member.id]
@@ -331,12 +331,12 @@ bot.on('message', async function(msg) {
             if(tierBefore > tierAfter){
               // demote
               // (elo before + 100) - (elo after)
-              eloChange = (RPBefore + 100) - RPAfter
+              eloChange = (RPAfter - RPBefore) - 100
               eloSign = "-" // negative sign accounted for
             }else{
               // promote
               //  (elo after + 100) - elo before
-              eloChange = (RPAfter + 100) - RPBefore
+              eloChange = (RPAfter - RPBefore) + 100
 
             }
           }else{
@@ -465,10 +465,10 @@ bot.on('message', async function(msg) {
     function ensureGameIsDownloaded(userId, matchId, accessToken, entitlementsToken){
       handleMatchDownloading(userId, matchId, accessToken, entitlementsToken, function(){
         processMatchData(matchId, rawMatchPath(matchId), function(){
-          bot.channels.cache.get("798343660001165332").send("Processed match "+matchID_+" for user "+userId);
+          bot.channels.cache.get("798343660001165332").send("Processed match "+matchId+" for user "+userId);
           doAllComputation()
         }, false)
-        fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
+        // fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
       }, function(){
         fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
       }, function(err){
@@ -676,8 +676,8 @@ bot.on('message', async function(msg) {
           let folderPath = MATCHES_PROCESSED_PATH+matchID
           // console.log(folderPath)
           if (!fs.existsSync(folderPath)){
-            console.log("E "+folderPath)
-              fs.mkdirSync(folderPath);
+            console.log("Making folder "+folderPath)
+            fs.mkdirSync(folderPath);
           }
 
           processedMatchesData[matchID]["gameStartMillis"] = matchStartTime
@@ -699,7 +699,8 @@ bot.on('message', async function(msg) {
             processedMatchesData[matchID][PROCESSING_ROUND_ANALYSIS] = 1;
             didProcessMatch = true;
           }
-          if(didProcessMatch){
+          // console.log("")
+          if(didProcessMatch == true){
             didProcess()
           }
           fs.writeFileSync('private/processedMatches.json', JSON.stringify(processedMatchesData, null, 2) , 'utf-8');
@@ -726,6 +727,49 @@ bot.on('message', async function(msg) {
           "teamId":playerInfo["teamId"]
         }
       }
+
+      var rounds = matchData["roundResults"]
+      for(var i = 0; i < rounds.length; i++){
+        var roundData = rounds[i]
+        var planter = roundData["bombPlanter"]
+        var defuser = roundData["bombDefuser"]
+        if(planter != undefined){
+          if(playerData[planter]["stats"]["plants"] == undefined){
+            playerData[planter]["stats"]["plants"] = 0
+          }
+          playerData[planter]["stats"]["plants"] += 1
+        }
+
+        if(defuser != undefined){
+          if(playerData[defuser]["stats"]["defuses"] == undefined){
+            playerData[defuser]["stats"]["defuses"] = 0
+          }
+          playerData[defuser]["stats"]["defuses"] += 1
+        }
+
+        var earlistKillTime = Number.MAX_SAFE_INTEGER
+        var earliestKillSubject = ""
+        // calculate first bloods
+        var roundPlayerStats = roundData["playerStats"]
+        for(var p = 0; p < roundPlayerStats.length; p++){
+          var player = roundPlayerStats[p]
+          var curSubject = player["subject"]
+          var playerKills = player["kills"];
+          for(var k = 0; k < playerKills.length; k++){
+            var killData = playerKills[k]
+            var killTime = killData["roundTime"]
+            if(killTime < earlistKillTime){
+              earlistKillTime = killTime
+              earliestKillSubject = curSubject
+            }
+          }
+        }
+        if(playerData[earliestKillSubject]["stats"]["firstBloods"] == undefined){
+          playerData[earliestKillSubject]["stats"]["firstBloods"] = 0
+        }
+        playerData[earliestKillSubject]["stats"]["firstBloods"] += 1
+      }
+
       fs.writeFileSync(folderPath+'/users.json', JSON.stringify(playerData, null, 2) , 'utf-8');
     }
 
@@ -871,7 +915,7 @@ bot.on('message', async function(msg) {
       allRoundDataFinal["winResults"] = roundWinInfo
       allRoundDataFinal["roundInfo"] = roundDataFinal
       allRoundDataFinal["scoreTotals"] = roundScoreTotals
-      console.log("ROUND STATS DATA "+folderPath)
+      // console.log("ROUND STATS DATA "+folderPath)
       fs.writeFileSync(folderPath+'/roundStats.json', JSON.stringify(allRoundDataFinal, null, 2) , 'utf-8');
     }
 
@@ -1008,7 +1052,11 @@ bot.on('message', async function(msg) {
                       "assists":0,
                       "playtimeMillis":0,
                       "score":0,
-                      "roundsPlayed":0 // do we even need this
+                      "roundsPlayed":0,
+                      "totalGamesPlayed":0,
+                      "defuses":0,
+                      "plants":0,
+                      "firstBloods":0
                     }
                   }
                 }
@@ -1019,6 +1067,13 @@ bot.on('message', async function(msg) {
                 playerData[subject]["stats"]["playtimeMillis"] += userEntity["stats"]["playtimeMillis"];
                 playerData[subject]["stats"]["roundsPlayed"] += userEntity["stats"]["roundsPlayed"];
                 playerData[subject]["stats"]["kd"] = playerData[subject]["stats"]["kills"]/playerData[subject]["stats"]["deaths"];
+                playerData[subject]["stats"]["totalGamesPlayed"] += 1;
+                if(userEntity["stats"]["defuses"] != undefined)
+                  playerData[subject]["stats"]["defuses"] += userEntity["stats"]["defuses"];
+                if(userEntity["stats"]["plants"] != undefined)
+                  playerData[subject]["stats"]["plants"] += userEntity["stats"]["plants"];
+                if(userEntity["stats"]["firstBloods"] != undefined)
+                  playerData[subject]["stats"]["firstBloods"] += userEntity["stats"]["firstBloods"];
               }
             }
           }catch{
@@ -1347,13 +1402,201 @@ bot.on('message', async function(msg) {
       // return "https://quickchart.io/chart?bkg=white&c="+encodeURIComponent(JSON.stringify(chartObject))
     }
 
-    function buildAsciiTable(title, tableHeaders, data){
+    function buildAsciiTable(title, tableHeaders, data, raw){
       var table = new AsciiTable().fromJSON({
         title:title,
         heading: tableHeaders,
         rows: data
       })
-      return table.toString()
+
+      return raw == true ? table : "`"+table.toString()+"`"
+    }
+
+    function combineTwoAsciiTables(table1, table2){
+      var s1 = table1.toString()
+      var s2 = table2.toString()
+      var s1Lines = s1.split(/\r?\n/)
+      var s2Lines = s2.split(/\r?\n/)
+      var shorterLength = Math.min(s1Lines.length, s2Lines.length)
+
+      var final = ""
+      for(var i = 0; i < shorterLength; i++){
+        final += s1Lines[i]+"|"+s2Lines[i]+"\n"
+      }
+      return final
+    }
+
+    function computeLeaderboards(){
+      var killThreshold = 100;
+      let thresholdArg = args[1]
+      if(thresholdArg != undefined){
+        killThreshold = thresholdArg
+      }
+
+      var userItems = Object.keys(totalUserStats).map(function(key) {
+        return [key, totalUserStats[key]];
+      });
+
+      // Sort the array based on the second element
+      userItems.sort(function(firstObj, secondObj) {
+        var first = firstObj[1]["stats"]
+        var second = secondObj[1]["stats"]
+
+        var firstAvg = first["score"] / first["roundsPlayed"]
+        var secondAvg = second["score"] / second["roundsPlayed"]
+
+        firstObj.push(firstAvg)
+        secondObj.push(secondAvg)
+
+        var firstKills = first["kills"]
+        var secondKills = second["kills"]
+        if(firstKills < killThreshold && secondKills < killThreshold){
+          return 0
+        }else{
+          if(firstKills < killThreshold && secondKills >= killThreshold){
+            return 1;// secondHSPercent - firstHSPercent
+          }else if(secondKills < killThreshold && firstKills >= killThreshold){
+            return -1;//firstHSPercent - secondHSPercent
+          }else{
+            return secondAvg - firstAvg
+          }
+        }
+      });
+
+      var toPrintScores = userItems.slice(0, 15)
+      var scoresTable = makeLeaderboardTable(toPrintScores, "Avg score/round Leaderboard", "Score", function(num){
+        return (num.toFixed(2))
+      })
+
+
+      // HS % leaderboard
+      var hitsItems = Object.keys(totalHitsStats).map(function(key) {
+        return [key, totalHitsStats[key]];
+      });
+
+      // Sort the array based on the second element
+      hitsItems.sort(function(firstObj, secondObj) {
+        var first = firstObj[1]
+        var second = secondObj[1]
+
+        var firstTotal = first["headshots"]+first["bodyshots"]+first["legshots"]
+        var secondTotal = second["headshots"]+second["bodyshots"]+second["legshots"]
+
+        var firstHSPercent = first["headshots"] / firstTotal
+        var secondHSPercent = second["headshots"] / secondTotal
+
+        firstObj.push(firstHSPercent)
+        secondObj.push(secondHSPercent)
+
+        var firstKills = totalUserStats[firstObj[0]]["stats"]["kills"]
+        var secondKills = totalUserStats[secondObj[0]]["stats"]["kills"]
+        if(firstKills < killThreshold && secondKills < killThreshold){
+          return 0
+        }else{
+          if(firstKills < killThreshold && secondKills >= killThreshold){
+            return 1;// secondHSPercent - firstHSPercent
+          }else if(secondKills < killThreshold && firstKills >= killThreshold){
+            return -1;//firstHSPercent - secondHSPercent
+          }else{
+            return secondHSPercent - firstHSPercent
+          }
+        }
+      });
+      var toPrintHeadshots = hitsItems.slice(0, 15)
+      var hsTable = makeLeaderboardTable(toPrintHeadshots, "Headshot % Leaderboard", "HS %", function(num){
+        return ((num*100).toFixed(2))+"%"
+      })
+
+
+
+      // kills leaderboard
+      userItems.sort(function(firstObj, secondObj) {
+        var first = firstObj[1]["stats"]
+        var second = secondObj[1]["stats"]
+
+
+        var firstKills = first["kills"]
+        var secondKills = second["kills"]
+
+        firstObj[2] = (firstKills) // because we already pushed an element earlier
+        secondObj[2] = (secondKills)
+        if(firstKills < killThreshold && secondKills < killThreshold){
+          return 0
+        }else{
+          if(firstKills < killThreshold && secondKills >= killThreshold){
+            return 1;// secondHSPercent - firstHSPercent
+          }else if(secondKills < killThreshold && firstKills >= killThreshold){
+            return -1;//firstHSPercent - secondHSPercent
+          }else{
+            return secondKills - firstKills
+          }
+        }
+      });
+
+      var toPrintKills = userItems.slice(0, 15)
+      var killsTable = makeLeaderboardTable(toPrintKills, "Total Kills Leaderboard", "Kills", function(num){
+        return num
+      })
+
+
+
+      // playtime leaderboard
+      userItems.sort(function(firstObj, secondObj) {
+        var first = firstObj[1]["stats"]
+        var second = secondObj[1]["stats"]
+
+
+        var firstKills = first["kills"]
+        var secondKills = second["kills"]
+
+        var firstPlaytime = first["playtimeMillis"]
+        var secondPlaytime = second["playtimeMillis"]
+
+        firstObj[2] = (firstPlaytime) // because we already pushed an element earlier
+        secondObj[2] = (secondPlaytime)
+        if(firstKills < killThreshold && secondKills < killThreshold){
+          return 0
+        }else{
+          if(firstKills < killThreshold && secondKills >= killThreshold){
+            return 1;// secondHSPercent - firstHSPercent
+          }else if(secondKills < killThreshold && firstKills >= killThreshold){
+            return -1;//firstHSPercent - secondHSPercent
+          }else{
+            return secondPlaytime - firstPlaytime
+          }
+        }
+      });
+
+      var toPrintPlaytime = userItems.slice(0, 15)
+      var playtimeTable = makeLeaderboardTable(toPrintPlaytime, "Total Playtime Leaderboard", "Playtime (hrs)", function(num){
+        return (num / (3600*1000)).toFixed(2);
+      })
+
+
+      // Order: Playtime, Kills, Score, HS %
+      var tableCombo1 = combineTwoAsciiTables(playtimeTable, killsTable)
+      var tableCombo2 = combineTwoAsciiTables(tableCombo1, scoresTable)
+      var tableCombo3 = combineTwoAsciiTables(tableCombo2, hsTable)
+      return tableCombo3
+
+      // Could be used in the future to break up leaderboards into multiple messages
+      // return [playtimeTable, killsTable, scoresTable, hsTable] // TODO return more leaderboards
+    }
+
+    function makeLeaderboardTable(toPrintItems, tableTitle, dataHeader, numFomatting){
+
+      var finalDataArray = []
+      for(var i = 0; i < toPrintItems.length; i++){
+        var userId = toPrintItems[i][0]
+        var userStats = totalUserStats[userId];
+        var userFullName = userStats["gameName"]+"#"+userStats["tagLine"]
+        var num = numFomatting(toPrintItems[i][2])
+        finalDataArray.push([userFullName, num])
+      }
+
+      var table = buildAsciiTable(tableTitle, ["Name", dataHeader], finalDataArray, true)
+      table.removeBorder()
+      return table
     }
 
     function cleanHSPercent(hs){
@@ -1370,7 +1613,7 @@ bot.on('message', async function(msg) {
     function doAllComputation(){
       computeTotalHits()
       computeTotalUsers()
-      bot.channels.cache.get("798343660001165332").send("Computed all stats");
+      bot.channels.cache.get("798343660001165332").send("Computed all stats.");
     }
     // elo = get elo
     // gam = get all matches
@@ -1456,17 +1699,24 @@ bot.on('message', async function(msg) {
           var userId = obj["id"];
           var userObj = obj["obj"];
 
-          var disclaimer = "**Note: These stats may not be inclusive for all matches in Act 3. Some old matches do not have data available.**\nFor now, this data only includes competitive games.\nStarting from Episode 2, all data should be accurate."
+          var disclaimer = "**For now, this data only includes competitive games.**"
 
           var userFullName = userObj["gameName"]+"#"+userObj["tagLine"]
 
           var kills = userObj["stats"]["kills"];
           var deaths = userObj["stats"]["deaths"]
+          var assists = userObj["stats"]["assists"]
           var roundsPlayed = userObj["stats"]["roundsPlayed"];
+          var kd = userObj["stats"]["kd"].toFixed(2)
+          var killsPerRound = (kills/roundsPlayed).toFixed(2)
 
-          var totalKDA = "K/D/A: "+kills+"/"+deaths+"/"+userObj["stats"]["assists"]+" (**"+(userObj["stats"]["kd"]).toFixed(2)+"** KD) (Average Kills per Round: **"+(kills/roundsPlayed).toFixed(2)+"**)"
+          var kdaTable = buildAsciiTable(null, ["Kills", "Deaths", "Assists", "K/D", "Average kills per round"], [[kills+"", deaths+"", assists+"", kd+"", killsPerRound+""]])
+
           var totalPlaytimeHours = (userObj["stats"]["playtimeMillis"] / (3600*1000)).toFixed(2);
           var score = userObj["stats"]["score"]
+          var scorePerRound = (score/roundsPlayed).toFixed(2)
+
+          var scoreTable = buildAsciiTable(null, ["Total rounds played", "Total score", "Score/round"], [[roundsPlayed, score, scorePerRound]])
 
           var hitsDataForUser = totalHitsStats[userId]
           var headshots = hitsDataForUser["headshots"]
@@ -1474,13 +1724,21 @@ bot.on('message', async function(msg) {
           var legshots = hitsDataForUser["legshots"]
 
           var totalHits = headshots+bodyshots+legshots
-          var headshotPercent = cleanHSPercent(headshots/totalHits);
-          var legshotPercent = cleanHSPercent(legshots/totalHits);
-          var bodyshotPercent = cleanHSPercent(bodyshots/totalHits);
+          var headshotPercent = cleanHSPercent(headshots/totalHits)+"%"
+          var legshotPercent = cleanHSPercent(legshots/totalHits)+"%"
+          var bodyshotPercent = cleanHSPercent(bodyshots/totalHits)+"%"
 
-          var hitsPercentText = "**Hit %**\nHeadshots: **"+headshotPercent+"%**\nBodyshots: **"+bodyshotPercent+"%**\nLegshots: **"+legshotPercent+"%**"
+          var hitsTable = buildAsciiTable(null, ["Headshot %", "Bodyshot %", "Legshots %"], [[headshotPercent, bodyshotPercent, legshotPercent]])
 
-          msg.channel.send(disclaimer+"\nStats for **"+userFullName+"**\n"+totalKDA+"\n(underestimated) play time: **"+totalPlaytimeHours+"** hours\nTotal score: **"+score+"** score over **"+roundsPlayed+"** rounds played. (Average score per round: **"+(score/roundsPlayed).toFixed(2)+"**)\n\n"+hitsPercentText)
+          var plants = userObj["stats"]["plants"];
+          var defuses = userObj["stats"]["defuses"]
+          var firstBloods = userObj["stats"]["firstBloods"]
+          var firstBloodRate = cleanHSPercent(firstBloods/roundsPlayed)+"%"
+          var miscTable = buildAsciiTable(null, ["Plants", "Defuses", "First bloods", "First blood % (over all rounds)"], [[plants, defuses, firstBloods, firstBloodRate]])
+
+          var totalGamesPlayed = userObj["stats"]["totalGamesPlayed"];
+
+          msg.channel.send(disclaimer+"\nStats for **"+userFullName+"**\nPlay time: **"+totalPlaytimeHours+"** hours over "+totalGamesPlayed+" games\n"+kdaTable+"\n"+scoreTable+"\n"+miscTable+"\n"+hitsTable)
           // console.log("PRinting Stats for "+obj.gameName+"#"+obj.tagLine)
         }else{
           msg.channel.send("User not found.")
@@ -1489,109 +1747,27 @@ bot.on('message', async function(msg) {
       }
     }
 
-    if(arg == "headshots"){
-      var killThreshold = 100;
-      let thresholdArg = args[1]
-      if(thresholdArg != undefined){
-        killThreshold = thresholdArg
-      }
-      // HS % leaderboard
-      var hitsItems = Object.keys(totalHitsStats).map(function(key) {
-        return [key, totalHitsStats[key]];
-      });
-
-      // Sort the array based on the second element
-      hitsItems.sort(function(firstObj, secondObj) {
-        var first = firstObj[1]
-        var second = secondObj[1]
-
-        var firstTotal = first["headshots"]+first["bodyshots"]+first["legshots"]
-        var secondTotal = second["headshots"]+second["bodyshots"]+second["legshots"]
-
-        var firstHSPercent = first["headshots"] / firstTotal
-        var secondHSPercent = second["headshots"] / secondTotal
-
-        firstObj.push(firstHSPercent)
-        secondObj.push(secondHSPercent)
-
-        var firstKills = totalUserStats[firstObj[0]]["stats"]["kills"]
-        var secondKills = totalUserStats[secondObj[0]]["stats"]["kills"]
-        if(firstKills < killThreshold && secondKills < killThreshold){
-          return 0
-        }else{
-          if(firstKills < killThreshold && secondKills >= killThreshold){
-            return 1;// secondHSPercent - firstHSPercent
-          }else if(secondKills < killThreshold && firstKills >= killThreshold){
-            return -1;//firstHSPercent - secondHSPercent
-          }else{
-            return secondHSPercent - firstHSPercent
-          }
-        }
-      });
-
-      var toPrint = hitsItems.slice(0, 15)
-      var finalDataArray = []
-      for(var i = 0; i < toPrint.length; i++){
-        var userId = toPrint[i][0]
-        var userStats = totalUserStats[userId];
-        var userFullName = userStats["gameName"]+"#"+userStats["tagLine"]
-        var num = ((toPrint[i][2]*100).toFixed(2))+"%"
-        finalDataArray.push([userFullName, num])
-      }
-
-      var str = buildAsciiTable("Headshot % Leaderboard", ["Name", "HS %"], finalDataArray)
-      msg.channel.send("`"+str+"`")
-    }
-
-    if(arg == "scores"){
-      var killThreshold = 100;
-      let thresholdArg = args[1]
-      if(thresholdArg != undefined){
-        killThreshold = thresholdArg
-      }
-
-      var userItems = Object.keys(totalUserStats).map(function(key) {
-        return [key, totalUserStats[key]];
-      });
-
-      // Sort the array based on the second element
-      userItems.sort(function(firstObj, secondObj) {
-        var first = firstObj[1]["stats"]
-        var second = secondObj[1]["stats"]
-
-        var firstAvg = first["score"] / first["roundsPlayed"]
-        var secondAvg = second["score"] / second["roundsPlayed"]
-
-        firstObj.push(firstAvg)
-        secondObj.push(secondAvg)
-
-        var firstKills = first["kills"]
-        var secondKills = second["kills"]
-        if(firstKills < killThreshold && secondKills < killThreshold){
-          return 0
-        }else{
-          if(firstKills < killThreshold && secondKills >= killThreshold){
-            return 1;// secondHSPercent - firstHSPercent
-          }else if(secondKills < killThreshold && firstKills >= killThreshold){
-            return -1;//firstHSPercent - secondHSPercent
-          }else{
-            return secondAvg - firstAvg
-          }
-        }
-      });
-
-      var toPrint = userItems.slice(0, 15)
-      var finalDataArray = []
-      for(var i = 0; i < toPrint.length; i++){
-        var userId = toPrint[i][0]
-        var userStats = totalUserStats[userId];
-        var userFullName = userStats["gameName"]+"#"+userStats["tagLine"]
-        var num = (toPrint[i][2].toFixed(2))
-        finalDataArray.push([userFullName, num])
-      }
-
-      var str = buildAsciiTable("Average score per round", ["Name", "Score"], finalDataArray)
-      msg.channel.send("`"+str+"`")
+    if(arg == "leaderboards"){
+      var allLeaderboards = computeLeaderboards()
+      msg.channel.send("`"+allLeaderboards+"`")
+      // Could be used in the future to break up leaderboards into multiple messages
+      // for(var i = 0; i < allLeaderboards.length; i += 3){
+      //   if(i + 2 < allLeaderboards.length){
+      //     var leaderboard1 = allLeaderboards[i]
+      //     var leaderboard2 = allLeaderboards[i+1]
+      //     var leaderboard3 = allLeaderboards[i+2]
+      //     var leaderboardPair = combineTwoAsciiTables(leaderboard1, leaderboard2)
+      //     var leaderboardPairFinal = combineTwoAsciiTables(leaderboardPair, leaderboard3)
+      //     msg.channel.send("`"+leaderboardPairFinal+"`")
+      //   }else if(i + 1 < allLeaderboards.length){
+      //     var leaderboard1 = allLeaderboards[i]
+      //     var leaderboard2 = allLeaderboards[i+1]
+      //     var leaderboardPair = combineTwoAsciiTables(leaderboard1, leaderboard2)
+      //     msg.channel.send("`"+leaderboardPair+"`")
+      //   }else{
+      //     msg.channel.send("`"+allLeaderboards[i].toString()+"`")
+      //   }
+      // }
     }
 
     if(arg == "damage" || arg == "score" || arg == "carry"){// || arg == "analyze"){
@@ -1652,7 +1828,5 @@ bot.on('message', async function(msg) {
       msg.channel.send(helpString)
     }
 });
-
-
 
 bot.login(token);
