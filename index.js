@@ -110,7 +110,7 @@ bot.on('message', async function(msg) {
     var arg = ((args[0].toString()).toLowerCase());
 
     var userCanUseBot = true;
-    if(msg.member.id == 303249695386501122){
+    if(msg.member.id == 303249695386501122 || msg.member.id == 166999847277297664){
       userCanUseBot = false;
     }
 
@@ -232,7 +232,9 @@ bot.on('message', async function(msg) {
         var match = matches[i]
         var matchId = match["MatchID"]
         var tierAfter = match["TierAfterUpdate"]
-        if(tierAfter > 0){ // only store actual comp games
+        var matchStartTime = match["MatchStartTime"]
+
+        if(tierAfter > 0 && matchStartTime > 1610442000000){ // only store actual comp games
           compHistoryData[userId]["Matches"][matchId] = match
           totalSaved += 1
         }
@@ -312,8 +314,8 @@ bot.on('message', async function(msg) {
         var embedFieldArray = []
         for(var i = 0; i < numMatchesToShow; i++){
           let latestMatchJson = compHistoryData[userId]["Matches"][matchSortArray[i]]//matchData[i]
-          let RPBefore = latestMatchJson["TierProgressBeforeUpdate"];
-          let RPAfter = latestMatchJson["TierProgressAfterUpdate"];
+          let RPBefore = latestMatchJson["RankedRatingBeforeUpdate"];
+          let RPAfter = latestMatchJson["RankedRatingAfterUpdate"];
           let tierBefore = latestMatchJson["TierBeforeUpdate"]
           let tierAfter = latestMatchJson["TierAfterUpdate"]
           let matchDate = latestMatchJson["MatchStartTime"]
@@ -393,7 +395,7 @@ bot.on('message', async function(msg) {
 
           }
 
-          var embedFieldObject = {name:compMovementEmoji+"**"+eloSign+eloChange+" RP **", value:fieldDay+endString, inline: debugMode ? false : true}
+          var embedFieldObject = {name:compMovementEmoji+"**"+eloSign+eloChange+" RR **", value:fieldDay+endString, inline: debugMode ? false : true}
           embedFieldArray.push(embedFieldObject)
         }
         var userStats = totalUserStats[userId];
@@ -406,21 +408,30 @@ bot.on('message', async function(msg) {
         }
 
         var currentEloAddOnText = ""
-        if(latestElo % 100 == 0){
-          currentEloAddOnText = "(Close to Derank)"
+        if(latestElo % 100 == 0 && latestTier > 0){
+          currentEloAddOnText = "(Derank if next game lost)"
+        }else if(latestTier == 0){
+          currentEloAddOnText = "Currently unranked. Please finish placement games first."
+          latestElo = "Unknown"
         }else{
-          currentEloAddOnText = "(**"+((100) - (latestElo % 100))+"** RP needed to rank up)"
+          currentEloAddOnText = "(**"+((100) - (latestElo % 100))+"** RR needed to rank up)"
         }
 
         const rankImage = new discord.MessageAttachment('images/TX_CompetitiveTier_Large_'+latestTier+".png", 'rank.png');
         const embed = new discord.MessageEmbed()
               .setColor(userColor)
-              .setTitle('Total Elo: '+latestElo+" RP ")
+              .setTitle('Total Ranked Rating: '+latestElo+" RR ")
               // .setURL('https://discord.js.org/')
               .setAuthor(userFullName, '', '')
               .setDescription(latestRank+" "+currentEloAddOnText)
-              .addField('Competitive history for the last '+numMatchesToShow+" matches:", "⠀", false)
-              .addFields(embedFieldArray)
+              .attachFiles(rankImage)
+              .setThumbnail('attachment://rank.png');
+
+        if(numMatchesToShow > 0){
+          embed.addField('Competitive history for the last '+numMatchesToShow+" matches:", "⠀", false)
+          .addFields(embedFieldArray)
+        }
+
               // .addField("\u200B", "\u200B", false)
               // .addField(latestRank, currentEloAddOnText, false)
               // .addField('Inline field title', 'Some value here', true)
@@ -428,24 +439,25 @@ bot.on('message', async function(msg) {
               // .setTimestamp()
               // .setFooter('Some footer text here', 'https://i.imgur.com/wSTFkRM.png')
               // .setTitle('Wicked Sweet Title')
-              .attachFiles(rankImage)
-              .setThumbnail('attachment://rank.png');
+
 
         var sentEmbed = await msg.channel.send({embed});
 
 
         var eloData = getCompEloHistoryList(userId)
         var eloChart = buildEloChart(eloData, userFullName, userColor)
-        var chartURL = chartURLFromObject(eloChart, function(url){
-          console.log(url)
-          embed.setImage(url)
-          sentEmbed.edit(embed)
-        })
+        if(eloChart != null){
+          chartURLFromObject(eloChart, function(url){
+            console.log(url)
+            embed.setImage(url)
+            sentEmbed.edit(embed)
+          })
+        }
 
         // var finalString = "**Rank data for** __***"+usernameArg+"***__\n**Current Rank:** "+latestRank+"\n**Current Elo**: "+latestElo+" RP "+currentEloAddOnText+"\n"+matchString
         // msg.channel.send(finalString)
         if(showAuth){
-          msg.channel.send("Access Token: "+accessToken+"\nEntitlement: "+entitlementsToken+"\nUser ID: "+userId)
+          msg.channel.send("Access Token: `"+accessToken+"`\n\nEntitlement: `"+entitlementsToken+"`\n\nUser ID: "+userId)
         }
       });
     }
@@ -479,7 +491,7 @@ bot.on('message', async function(msg) {
             if (err) {
               console.log(err);
             }else{
-              downloadCompletion(matchID, body)
+              downloadCompletion(matchID, JSON.parse(body))
             }
         });
       });
@@ -504,7 +516,7 @@ bot.on('message', async function(msg) {
             matchesDownloadedData[userId][matchID_] = 1;
             downloadCompletion()
 
-            let matchDate = matchData["MatchStartTime"]
+            let matchDate = matchData["matchInfo"]["gameStartMillis"]
             var d = new Date(matchDate)
             var matchDayStr = dateFormat(d, "m/d h:MMtt");
 
@@ -892,7 +904,7 @@ bot.on('message', async function(msg) {
     }
 
     function eloFromCompInfo(matchInfo){
-      let RPAfter = matchInfo["TierProgressAfterUpdate"];
+      let RPAfter = matchInfo["RankedRatingAfterUpdate"];
       let tierAfter = matchInfo["TierAfterUpdate"]
       var currentElo = (tierAfter*100) - 300 + RPAfter;
       return currentElo
@@ -1235,6 +1247,9 @@ bot.on('message', async function(msg) {
     }
 
     function buildEloChart(eloData, userName, userColor){
+      if(eloData["elo"].length == 0){
+        return null
+      }
       var eloMin = Math.min(...eloData["elo"])
       var eloMax = Math.max(...eloData["elo"])
 
