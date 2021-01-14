@@ -72,6 +72,8 @@ let EMOJI_COMP_PROMOTED = "<:rank_promote:797348352664272947>"
 let EMOJI_COMP_DEMOTED = "<:rank_demote:797348431609593856>"
 let EMOJI_COMP_DRAW = "<:rank_stable:797332889971720213>"
 
+let ELO_CHART_WIDTH = 700
+
 let USERNAME_FOR_LEADERBOARD = "knife"
 
 var RANKS = {
@@ -1310,6 +1312,36 @@ bot.on('message', async function(msg) {
       return chartObject
     }
 
+    function makeAnnotationsForEloMarkers(lowest, highest){
+      var numberOfAnnotations = Math.ceil((highest-lowest)/100) + 1 // extra 1 should be for rank below lowest elo
+      var annotations = []
+      var lowestEloAnno = Math.floor(lowest/100)*100
+      console.log("ANNO "+lowest+"_"+highest+"_"+numberOfAnnotations+"_"+lowestEloAnno+"_")
+      for(var i = 0; i < numberOfAnnotations; i++){
+        var anno = {
+          type: 'line',
+          scaleID: 'y-axis-0',
+          mode:"horizontal",
+          value: lowestEloAnno,
+          borderColor: 'red',
+          borderWidth: 1,
+          label:{
+            enabled: true,
+            content:RANKS[((lowestEloAnno+300)/100)+""],
+            position:"start",
+            font:{
+              size:12,
+              color:"#888",
+            },
+            xAdjust:-(ELO_CHART_WIDTH/2)+55
+          }
+        }
+        annotations.push(anno)
+        lowestEloAnno += 100
+      }
+      return annotations
+    }
+
     function buildEloChart(eloData, userName, userColor){
       if(eloData["elo"].length == 0){
         return null
@@ -1325,6 +1357,8 @@ bot.on('message', async function(msg) {
 
       var averageRankNum = Math.floor((average/100))+3;
       var averageRankText = RANKS[""+averageRankNum]
+      var eloAnnotations = makeAnnotationsForEloMarkers(eloMin, eloMax)
+
       var chartOptions = {
         "responsive":true,
         "title":{
@@ -1352,6 +1386,9 @@ bot.on('message', async function(msg) {
               // }
             }
           }]
+        },
+        "annotation":{
+          "annotations":eloAnnotations
         }
       }
       chartOptions["plugins"] = {
@@ -1367,7 +1404,7 @@ bot.on('message', async function(msg) {
       var datasetObject = {
         "label": "",
         "borderColor": userColor,
-        // "backgroundColor": "rgb(255, 99, 132)",
+        "backgroundColor": userColor,
         "fill": false,
         "data": eloData["elo"].reverse()
       }
@@ -1384,7 +1421,7 @@ bot.on('message', async function(msg) {
         },
         "options":chartOptions
       }
-      // console.log("CHART: "+JSON.stringify(chartObject))
+      console.log("CHART: "+JSON.stringify(chartObject))
       return chartObject
     }
 
@@ -1394,7 +1431,7 @@ bot.on('message', async function(msg) {
         method: 'POST',
         json: {
           "chart":(stringify(chartObject)),
-          "width":700,
+          "width":ELO_CHART_WIDTH,
           "backgroundColor":"white"
         }
       }
@@ -1625,8 +1662,9 @@ bot.on('message', async function(msg) {
         var leaderboardData = JSON.parse(body)
         var leaderboardPlayersAll = leaderboardData["Players"]
 
+        var totalPages = Math.floor(leaderboardPlayersAll.length/10)
         if((page+1)*10 > leaderboardPlayersAll.length){
-          page = Math.floor(leaderboardPlayersAll.length/10)
+          page = totalPages
         }
         var leaderboardPlayers = leaderboardPlayersAll.slice(page*10, (page+1)*10)
         for(var i = 0; i < leaderboardPlayers.length; i++){
@@ -1655,7 +1693,7 @@ bot.on('message', async function(msg) {
           tableData.push(data)
         }
 
-        var tableStr = buildAsciiTable("NA Top 500 Leaderboard", ["Rank", "Rating", "Name", "Wins"], tableData, false)
+        var tableStr = buildAsciiTable("NA Top 500 Leaderboard (Page "+(page+1)+"/"+(totalPages+1)+")", ["Rank", "Rating", "Name", "Wins"], tableData, false)
         completion(tableStr)
       })
     }
