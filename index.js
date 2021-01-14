@@ -12,8 +12,9 @@ const querystring = require('querystring');
 var dateFormat = require('dateformat');
 
 let rawUserColors = fs.readFileSync('private/userColors.json');
-let rawdata = fs.readFileSync('private/static/valAuths.json');
+let rawAuthData = fs.readFileSync('private/static/valAuths.json');
 let rawCacheData = fs.readFileSync('private/authCache.json');
+let rawContentData = fs.readFileSync('private/static/content.json');
 let rawMatchDownloads = fs.readFileSync('private/matchesDownloaded.json');
 let rawProcessedMatches = fs.readFileSync('private/processedMatches.json');
 let rawCompHistory = fs.readFileSync('private/compHistory.json');
@@ -24,8 +25,9 @@ let discordTokenRaw = fs.readFileSync('secret.json');
 
 let userColorsData = JSON.parse(rawUserColors);
 let token = JSON.parse(discordTokenRaw)["key"];
-let authData = JSON.parse(rawdata);
+let authData = JSON.parse(rawAuthData);
 let authCacheData = JSON.parse(rawCacheData);
+let contentData = JSON.parse(rawContentData);
 let matchesDownloadedData = JSON.parse(rawMatchDownloads);
 let processedMatchesData = JSON.parse(rawProcessedMatches);
 let compHistoryData = JSON.parse(rawCompHistory);
@@ -724,8 +726,19 @@ bot.on('message', async function(msg) {
     }
 
     function processMatchUserAnalysis(folderPath, matchData){
+      var matchID = matchData["matchInfo"]["matchId"]
+      var mapId = matchData["matchInfo"]["mapId"]
+
       let players = matchData["players"]
       var playerData = {}
+
+      var blueTeamHighestScore = 0
+      var blueTeamHighestScoreSubject = ""
+
+      var redTeamHighestScore = 0
+      var redTeamHighestScoreSubject = ""
+
+      var scores = []
       for(var i = 0; i < players.length; i++){
         let playerInfo = players[i];
         let subject = playerInfo["subject"]
@@ -737,11 +750,37 @@ bot.on('message', async function(msg) {
           "stats":playerInfo["stats"],
           "teamId":playerInfo["teamId"]
         }
+        scores.push(playerInfo["stats"]["score"])
+
+        let playerScore = playerInfo["stats"]["score"]
+        let playerTeam = playerInfo["teamId"]
+
+        if(playerTeam == "Blue" && playerScore > blueTeamHighestScore){
+          blueTeamHighestScore = playerScore
+          blueTeamHighestScoreSubject = subject
+        }
+        if(playerTeam == "Red" && playerScore > redTeamHighestScore){
+          redTeamHighestScore = playerScore
+          redTeamHighestScoreSubject = subject
+        }
       }
+      scores.sort(function(a, b){return b-a})
+
+      var redTeamScore = 0;
+      var blueTeamScore = 0;
 
       var rounds = matchData["roundResults"]
       for(var i = 0; i < rounds.length; i++){
         var roundData = rounds[i]
+
+        let winningTeam = roundData["winningTeam"]
+
+        if(winningTeam == "Blue"){
+          blueTeamScore += 1
+        }else{
+          redTeamScore += 1
+        }
+
         var planter = roundData["bombPlanter"]
         var defuser = roundData["bombDefuser"]
         if(planter != undefined){
@@ -781,7 +820,58 @@ bot.on('message', async function(msg) {
         playerData[earliestKillSubject]["stats"]["firstBloods"] += 1
       }
 
-      fs.writeFileSync(folderPath+'/users.json', JSON.stringify(playerData, null, 2) , 'utf-8');
+      var winningTeam = redTeamScore > blueTeamScore ? "Red" : (redTeamScore == blueTeamScore ? "Draw" : "Blue")
+
+      var teamMVP = ""
+      var matchMVP = ""
+
+      if(redTeamHighestScore > blueTeamHighestScore){
+        // red team has match mvp, blue team has team mvp
+        matchMVP = redTeamHighestScoreSubject
+        teamMVP = blueTeamHighestScoreSubject
+      }else{
+        matchMVP = blueTeamHighestScoreSubject
+        teamMVP = redTeamHighestScoreSubject
+      }
+      // switch (winningTeam) {
+      //   case "Draw":
+      //     if(redTeamHighestScore > blueTeamHighestScore){
+      //       // red team match mvp, blue team team mvp
+      //       teamMVP = blueTeamHighestScoreSubject
+      //       matchMVP = redTeamHighestScoreSubject
+      //     }else{
+      //       teamMVP = redTeamHighestScoreSubject
+      //       matchMVP = blueTeamHighestScoreSubject
+      //     }
+      //     break;
+      //   case "Red":
+      //     teamMVP = blueTeamHighestScoreSubject
+      //     matchMVP = redTeamHighestScoreSubject
+      //     break;
+      //   case "Blue":
+      //     teamMVP = redTeamHighestScoreSubject
+      //     matchMVP = blueTeamHighestScoreSubject
+      //     break;
+      //   default:
+      // }
+
+      var gameInfoData = {
+        "teamMVP":teamMVP,
+        "matchMVP":matchMVP,
+        "blueScore":blueTeamScore,
+        "redScore":redTeamScore,
+        "winningTeam":winningTeam,
+        "matchID":matchID,
+        "mapId":mapId,
+        "scores":scores
+      }
+
+      var finalUserData = {
+        "users":playerData,
+        "gameInfo":gameInfoData
+      }
+
+      fs.writeFileSync(folderPath+'/users.json', JSON.stringify(finalUserData, null, 2) , 'utf-8');
     }
 
     function processMatchHitAnalysis(folderPath, matchData){
@@ -816,9 +906,12 @@ bot.on('message', async function(msg) {
       var allRoundDataFinal = {}
 
       let matchPlayers = matchData["players"]
+      var playerCharacters = {}
+
       var teamInfo = {}
       for(var p = 0; p < matchPlayers.length; p++){
         teamInfo[matchPlayers[p]["subject"]] = matchPlayers[p]["teamId"]
+        playerCharacters[matchPlayers[p]["subject"]] = matchPlayers[p]["characterId"]
       }
 
       allRoundDataFinal["teamInfo"] = teamInfo
@@ -827,18 +920,25 @@ bot.on('message', async function(msg) {
 
       var roundDataFinal = {}
       var roundWinInfo = {}
+      var roundResultInfo = {}
       var roundScoreTotals = {}
+
+
       for(var i = 0; i < rounds.length; i++){
         let roundData = rounds[i];
 
         let roundNum = roundData["roundNum"]
         let winningTeam = roundData["winningTeam"]
+        let roundResult = roundData["roundResultCode"]
+
         roundWinInfo[""+roundNum] = winningTeam
+        roundResultInfo[""+roundNum] = roundResult
 
         let roundPlayerStats = roundData["playerStats"];
         for(var j = 0; j < roundPlayerStats.length; j++){
           let playerData = roundPlayerStats[j];
           let subject = playerData["subject"];
+          let playerTeam = teamInfo[subject]
 
           let score = playerData["score"];
 
@@ -850,6 +950,8 @@ bot.on('message', async function(msg) {
             roundScoreTotals[subject] = 0
           }
           roundScoreTotals[subject] += score
+
+
 
           var roundPlayerData = {}
 
@@ -923,9 +1025,15 @@ bot.on('message', async function(msg) {
           roundDataFinal[subject].push(roundPlayerData)
         }
       }
+
+
       allRoundDataFinal["winResults"] = roundWinInfo
       allRoundDataFinal["roundInfo"] = roundDataFinal
       allRoundDataFinal["scoreTotals"] = roundScoreTotals
+      allRoundDataFinal["roundResults"] = roundResultInfo
+
+      allRoundDataFinal["playerCharacters"] = playerCharacters
+
       // console.log("ROUND STATS DATA "+folderPath)
       fs.writeFileSync(folderPath+'/roundStats.json', JSON.stringify(allRoundDataFinal, null, 2) , 'utf-8');
     }
@@ -1046,7 +1154,7 @@ bot.on('message', async function(msg) {
         filenames.forEach(function(filename) {
           try {
             let rawUsersData = fs.readFileSync(MATCHES_PROCESSED_PATH + filename + "/users.json");
-            let matchUsersData = JSON.parse(rawUsersData)
+            let matchUsersData = JSON.parse(rawUsersData)["users"]
 
             for (var subject in matchUsersData) {
               // check if the property/key is defined in the object itself, not in parent
@@ -1698,6 +1806,123 @@ bot.on('message', async function(msg) {
       })
     }
 
+    function getContentNameFromId(contentKey, testKey, id){
+      var contentArray = contentData[contentKey]
+      for(var i = 0; i < contentArray.length; i++){
+        var aD = contentArray[i]
+        if(aD[testKey].toLowerCase() == id.toLowerCase()){
+          return aD["Name"]
+        }
+      }
+      return ""
+    }
+
+    function matchHistoryTable(userId, matchTableCompletion){
+      // make Promise version of fs.readFile()
+      fs.readFileAsync = function(filename, enc) {
+          return new Promise(function(resolve, reject) {
+              fs.readFile(filename, enc, function(err, data){
+                  if (err)
+                      reject(err);
+                  else
+                      resolve(data);
+              });
+          });
+      };
+
+      function getFile(filename) {
+        return fs.readFileAsync(filename, 'utf8');
+      }
+
+      function readAllMatches(){
+        var matches = compHistoryData[userId]["MatchSort"]
+        var roundStatsFiles = matches.map(function(matchId){
+          return MATCHES_PROCESSED_PATH+matchId+"/users.json"
+        })
+        return Promise.all(roundStatsFiles.map(getFile))
+      }
+
+      function getPlaceOfUserFromScores(scores, userId){
+        // Create items array
+        var items = Object.keys(scores).map(function(key) {
+          return [key, scores[key]];
+        });
+
+        // Sort the array based on the second element
+        items.sort(function(first, second) {
+          return second[1] - first[1];
+        });
+
+        for(var i = 0; i < items.length; i++){
+          if(items[i][0] == userId){
+            return i+1
+          }
+        }
+        return 0;
+      }
+
+      if(compHistoryData[userId] != undefined){
+        readAllMatches().then(function(files){
+          // var headers = ["agent", "kda & score", "place & MVPs", "map"]
+          var dataArray = []
+          files.forEach(function(fileData){
+            var gameUserInfo = JSON.parse(fileData)
+            var matchId = gameUserInfo["gameInfo"]["matchId"]
+            var userInfo = gameUserInfo["users"][userId]
+            var userTeam = userInfo["teamId"]
+            var gameMatchMVP = gameUserInfo["gameInfo"]["matchMVP"]
+            var gameTeamMVP = gameUserInfo["gameInfo"]["teamMVP"]
+            var mapId = gameUserInfo["gameInfo"]["mapId"]
+            var allScores = gameUserInfo["gameInfo"]["scores"]
+
+            var redScore = gameUserInfo["gameInfo"]["redScore"]
+            var blueScore = gameUserInfo["gameInfo"]["blueScore"]
+
+            var ourScore = userTeam == "Blue" ? blueScore : redScore
+            var enemyScore = userTeam == "Blue" ? redScore : blueScore
+            var gameResult = ourScore > enemyScore ? "WIN" : (ourScore == enemyScore ? "Draw" : "LOSE")
+            var scoreString = gameResult + " ("+ourScore+"-"+enemyScore+")"
+
+            var mapName = getContentNameFromId("Maps", "AssetPath", mapId)
+
+            // console.log("Match "+gameUserInfo["gameInfo"]["blueScore"]+"-"+gameUserInfo["gameInfo"]["redScore"])
+
+            var agentId = userInfo["characterId"]
+            var agentName = getContentNameFromId("Characters", "ID", agentId)
+
+            var score = userInfo["stats"]["score"]
+            var leaderboardPlace = 0;
+            for(var i = 0; i < allScores.length; i++){
+              if(allScores[i] == score){
+                leaderboardPlace = i+1
+              }
+            }
+
+            var kills = userInfo["stats"]["kills"]
+            var deaths = userInfo["stats"]["deaths"]
+            var assists = userInfo["stats"]["assists"]
+
+            var mvpText = gameMatchMVP == userId ? "Match MVP " : (gameTeamMVP == userId ? "Team MVP " : "")
+            var placeText = leaderboardPlace == 1 ? "1st" : (leaderboardPlace == 2 ? "2nd" : (leaderboardPlace == 3 ? "3rd" : leaderboardPlace+"th"))
+            if(mvpText != ""){
+              mvpText += "("+placeText+")"
+            }else{
+              mvpText += placeText
+            }
+
+            var kdaText = kills+"/"+deaths+"/"+assists+" ("+score+")"
+
+            var matchData = [agentName, kdaText, mvpText, scoreString, mapName]
+            dataArray.push(matchData)
+          })
+          var matchTable = buildAsciiTable("Match History", ["agent", "kda & score", "place & MVPs", "score", "map"], dataArray)
+          matchTableCompletion(matchTable)
+        })
+      }else{
+
+      }
+    }
+
     function cleanHSPercent(hs){
       var num = ((hs*100).toFixed(2))
       return num;
@@ -1809,13 +2034,13 @@ bot.on('message', async function(msg) {
           var kd = userObj["stats"]["kd"].toFixed(2)
           var killsPerRound = (kills/roundsPlayed).toFixed(2)
 
-          var kdaTable = buildAsciiTable(null, ["Kills", "Deaths", "Assists", "K/D", "Average kills per round"], [[kills+"", deaths+"", assists+"", kd+"", killsPerRound+""]])
 
           var totalPlaytimeHours = (userObj["stats"]["playtimeMillis"] / (3600*1000)).toFixed(2);
           var score = userObj["stats"]["score"]
           var scorePerRound = (score/roundsPlayed).toFixed(2)
 
-          var scoreTable = buildAsciiTable(null, ["Total rounds played", "Total score", "Score/round"], [[roundsPlayed, score, scorePerRound]])
+          var kdaTable = buildAsciiTable(null, ["Kills", "Deaths", "Assists", "K/D", "Total rounds played", "Total score", "Score/round", "Average kills per round"], [[kills+"", deaths+"", assists+"", kd+"", roundsPlayed, score, scorePerRound, killsPerRound+""]])
+          var scoreTable = ""
 
           var hitsDataForUser = totalHitsStats[userId]
           var headshots = hitsDataForUser["headshots"]
@@ -1827,17 +2052,23 @@ bot.on('message', async function(msg) {
           var legshotPercent = cleanHSPercent(legshots/totalHits)+"%"
           var bodyshotPercent = cleanHSPercent(bodyshots/totalHits)+"%"
 
-          var hitsTable = buildAsciiTable(null, ["Headshot %", "Bodyshot %", "Legshots %"], [[headshotPercent, bodyshotPercent, legshotPercent]])
-
           var plants = userObj["stats"]["plants"];
           var defuses = userObj["stats"]["defuses"]
           var firstBloods = userObj["stats"]["firstBloods"]
           var firstBloodRate = cleanHSPercent(firstBloods/roundsPlayed)+"%"
-          var miscTable = buildAsciiTable(null, ["Plants", "Defuses", "First bloods", "First blood % (over all rounds)"], [[plants, defuses, firstBloods, firstBloodRate]])
+          var miscTable = buildAsciiTable(null, ["Plants", "Defuses", "First bloods", "First blood % (over all rounds)", "Headshot %", "Bodyshot %", "Legshots %"], [[plants, defuses, firstBloods, firstBloodRate, headshotPercent, bodyshotPercent, legshotPercent]])
 
           var totalGamesPlayed = userObj["stats"]["totalGamesPlayed"];
 
-          msg.channel.send(disclaimer+"\nStats for **"+userFullName+"**\nPlay time: **"+totalPlaytimeHours+"** hours over "+totalGamesPlayed+" games\n"+kdaTable+"\n"+scoreTable+"\n"+miscTable+"\n"+hitsTable)
+          var msgText = disclaimer+"\nStats for **"+userFullName+"**\nPlay time: **"+totalPlaytimeHours+"** hours over "+totalGamesPlayed+" competitive games.\n"+kdaTable+"\n"+scoreTable+"\n"+miscTable+"\n"
+
+          var statMsg = await msg.channel.send(msgText)
+
+          matchHistoryTable(userId, function(table){
+            msgText += "\n"+table
+            statMsg.edit(msgText)
+          })
+
           // console.log("PRinting Stats for "+obj.gameName+"#"+obj.tagLine)
         }else{
           msg.channel.send("User not found.")
