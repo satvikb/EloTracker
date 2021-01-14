@@ -72,6 +72,8 @@ let EMOJI_COMP_PROMOTED = "<:rank_promote:797348352664272947>"
 let EMOJI_COMP_DEMOTED = "<:rank_demote:797348431609593856>"
 let EMOJI_COMP_DRAW = "<:rank_stable:797332889971720213>"
 
+let USERNAME_FOR_LEADERBOARD = "knife"
+
 var RANKS = {
   "0": "Unrated",
   "1": "Unknown 1",
@@ -265,6 +267,10 @@ bot.on('message', async function(msg) {
       return totalSaved
     }
 
+    function calcElo(tierAfter, rpAfter){
+      return (tierAfter*100) - 300 + rpAfter;
+    }
+
     function displayUserElo(userId, usernameArg, accessToken, entitlementsToken){
       const options = {
           url: 'https://pd.na.a.pvp.net/mmr/v1/players/'+userId+"/competitiveupdates",
@@ -344,9 +350,11 @@ bot.on('message', async function(msg) {
             eloChange = RPAfter - RPBefore;
             eloSign = eloChange < 0 ? "" : "+"
           }
+          let eloChangeFromData = latestMatchJson["RankedRatingEarned"]
+          var showBothEloChange = eloChangeFromData != eloChange
 
           let rankName = RANKS[tierAfter];
-          var currentElo = (tierAfter*100) - 300 + RPAfter;
+          var currentElo = calcElo(tierAfter, RPAfter)
 
           if(i == 0){
             latestRank = rankName
@@ -395,7 +403,8 @@ bot.on('message', async function(msg) {
 
           }
 
-          var embedFieldObject = {name:compMovementEmoji+"**"+eloSign+eloChange+" RR **", value:fieldDay+endString, inline: debugMode ? false : true}
+          var extraElo = showBothEloChange ? "** ("+eloChangeFromData+") ** RR **" : " RR **"
+          var embedFieldObject = {name:compMovementEmoji+"**"+eloSign+eloChange+extraElo, value:fieldDay+endString, inline: debugMode ? false : true}
           embedFieldArray.push(embedFieldObject)
         }
         var userStats = totalUserStats[userId];
@@ -1427,7 +1436,7 @@ bot.on('message', async function(msg) {
     }
 
     function computeLeaderboards(){
-      var killThreshold = 100;
+      var killThreshold = 50;
       let thresholdArg = args[1]
       if(thresholdArg != undefined){
         killThreshold = thresholdArg
@@ -1574,13 +1583,13 @@ bot.on('message', async function(msg) {
 
 
       // Order: Playtime, Kills, Score, HS %
-      var tableCombo1 = combineTwoAsciiTables(playtimeTable, killsTable)
-      var tableCombo2 = combineTwoAsciiTables(tableCombo1, scoresTable)
-      var tableCombo3 = combineTwoAsciiTables(tableCombo2, hsTable)
-      return tableCombo3
+      // var tableCombo1 = combineTwoAsciiTables(playtimeTable, killsTable)
+      // var tableCombo2 = combineTwoAsciiTables(tableCombo1, scoresTable)
+      // var tableCombo3 = combineTwoAsciiTables(tableCombo2, hsTable)
+      // return tableCombo3
 
       // Could be used in the future to break up leaderboards into multiple messages
-      // return [playtimeTable, killsTable, scoresTable, hsTable] // TODO return more leaderboards
+      return [playtimeTable, killsTable, scoresTable, hsTable] // TODO return more leaderboards
     }
 
     function makeLeaderboardTable(toPrintItems, tableTitle, dataHeader, numFomatting){
@@ -1597,6 +1606,58 @@ bot.on('message', async function(msg) {
       var table = buildAsciiTable(tableTitle, ["Name", dataHeader], finalDataArray, true)
       table.removeBorder()
       return table
+    }
+
+    function getGlobalLeaderboard(page, accessToken, entitlementsToken, completion){
+      const options = {
+          url: "https://pd.na.a.pvp.net/mmr/v1/leaderboards/affinity/na/queue/competitive/season/97b6e739-44cc-ffa7-49ad-398ba502ceb0",
+          method: 'GET',
+          headers: {
+              "Content-Type": "application/json",
+              'Authorization': 'Bearer '+accessToken,
+              'X-Riot-Entitlements-JWT': entitlementsToken,
+              'X-Riot-ClientVersion':"release-02.00-shipping-16-508517"
+          },
+      };
+
+      var tableData = []
+      request(options, async function(err, res, body) {
+        var leaderboardData = JSON.parse(body)
+        var leaderboardPlayersAll = leaderboardData["Players"]
+
+        if((page+1)*10 > leaderboardPlayersAll.length){
+          page = Math.floor(leaderboardPlayersAll.length/10)
+        }
+        var leaderboardPlayers = leaderboardPlayersAll.slice(page*10, (page+1)*10)
+        for(var i = 0; i < leaderboardPlayers.length; i++){
+          var playerData = leaderboardPlayers[i]
+          var playerSubject = playerData["subject"]
+          var playerRank = playerData["LeaderboardRank"]
+          var playerRating = playerData["RankedRating"]
+          var playerWins = playerData["NumberOfWins"]
+
+          var anon = playerData["IsAnonymized"]
+          var banned = playerData["IsBanned"]
+
+          var fullName = ""
+          if(anon == true){
+            fullName = "Secret Agent"
+          }else{
+            var gameName = playerData["GameName"]
+            var tagLine = playerData["TagLine"]
+
+            fullName = gameName+"#"+tagLine
+          }
+          if(banned){
+            fullName += "[Banned]"
+          }
+          var data = [playerRank, playerRating, fullName, playerWins]
+          tableData.push(data)
+        }
+
+        var tableStr = buildAsciiTable("NA Top 500 Leaderboard", ["Rank", "Rating", "Name", "Wins"], tableData, false)
+        completion(tableStr)
+      })
     }
 
     function cleanHSPercent(hs){
@@ -1749,25 +1810,60 @@ bot.on('message', async function(msg) {
 
     if(arg == "leaderboards"){
       var allLeaderboards = computeLeaderboards()
-      msg.channel.send("`"+allLeaderboards+"`")
-      // Could be used in the future to break up leaderboards into multiple messages
-      // for(var i = 0; i < allLeaderboards.length; i += 3){
-      //   if(i + 2 < allLeaderboards.length){
-      //     var leaderboard1 = allLeaderboards[i]
-      //     var leaderboard2 = allLeaderboards[i+1]
-      //     var leaderboard3 = allLeaderboards[i+2]
-      //     var leaderboardPair = combineTwoAsciiTables(leaderboard1, leaderboard2)
-      //     var leaderboardPairFinal = combineTwoAsciiTables(leaderboardPair, leaderboard3)
-      //     msg.channel.send("`"+leaderboardPairFinal+"`")
-      //   }else if(i + 1 < allLeaderboards.length){
-      //     var leaderboard1 = allLeaderboards[i]
-      //     var leaderboard2 = allLeaderboards[i+1]
-      //     var leaderboardPair = combineTwoAsciiTables(leaderboard1, leaderboard2)
-      //     msg.channel.send("`"+leaderboardPair+"`")
-      //   }else{
-      //     msg.channel.send("`"+allLeaderboards[i].toString()+"`")
-      //   }
+      // try{
+      //   msg.channel.send("`"+allLeaderboards+"`")
+      // }catch(err){
+      //   // Break up the leaderboards
+      //   msg.channel.send("This was kinda expected. @ me pls "+err)
       // }
+      // Could be used in the future to break up leaderboards into multiple messages
+      for(var i = 0; i < allLeaderboards.length; i += 2/*3*/){
+        /*if(i + 2 < allLeaderboards.length){
+          var leaderboard1 = allLeaderboards[i]
+          var leaderboard2 = allLeaderboards[i+1]
+          var leaderboard3 = allLeaderboards[i+2]
+          var leaderboardPair = combineTwoAsciiTables(leaderboard1, leaderboard2)
+          var leaderboardPairFinal = combineTwoAsciiTables(leaderboardPair, leaderboard3)
+          msg.channel.send("`"+leaderboardPairFinal+"`")
+        }else*/ if(i + 1 < allLeaderboards.length){
+          var leaderboard1 = allLeaderboards[i]
+          var leaderboard2 = allLeaderboards[i+1]
+          var leaderboardPair = combineTwoAsciiTables(leaderboard1, leaderboard2)
+          msg.channel.send("`"+leaderboardPair+"`")
+        }else{
+          msg.channel.send("`"+allLeaderboards[i].toString()+"`")
+        }
+      }
+    }
+
+    if(arg == "global"){
+      let pageNumRaw = args[1] || 1
+      let pageNum = parseInt(pageNumRaw)
+
+      if(pageNum <= 0 || isNaN(pageNum)){
+        pageNum = 1
+      }
+
+      let usernameRawArg = USERNAME_FOR_LEADERBOARD
+      if(usernameRawArg != undefined){
+        let usernameArg = usernameRawArg.toLowerCase()
+        let userData = authData["users"][usernameArg];
+        if(userData != undefined){
+          let username = userData["username"];
+          let password = userData["password"];
+
+          getUserAuth(username, password, async function(creds){
+            let userId = creds["userId"];
+            let entitlementsToken = creds["entitlementsToken"];
+            let accessToken = creds["accessToken"];
+            let expiryTime = creds["expiry"];
+
+            var globalLeaderboard = getGlobalLeaderboard(pageNum-1, accessToken, entitlementsToken, function(table){
+              msg.channel.send(table)
+            })
+          })
+        }
+      }
     }
 
     if(arg == "damage" || arg == "score" || arg == "carry"){// || arg == "analyze"){
