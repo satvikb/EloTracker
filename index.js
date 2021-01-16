@@ -8,6 +8,7 @@ var AsciiTable = require('ascii-table')
 const PREFIX = '?';
 const ytdl = require('ytdl-core-discord');
 const request = require('request');
+const requestPromise = require('request-promise');
 const querystring = require('querystring');
 var dateFormat = require('dateformat');
 
@@ -17,7 +18,8 @@ let rawCacheData = fs.readFileSync('private/authCache.json');
 let rawContentData = fs.readFileSync('private/static/content.json');
 let rawMatchDownloads = fs.readFileSync('private/matchesDownloaded.json');
 let rawProcessedMatches = fs.readFileSync('private/processedMatches.json');
-let rawCompHistory = fs.readFileSync('private/compHistory.json');
+// let rawCompHistory = fs.readFileSync('private/compHistory.json');
+let rawMatchHistory = fs.readFileSync('private/matchHistory.json');
 
 // let rawPlayerAliases = fs.readFileSync('private/playerAliases.json');
 
@@ -30,7 +32,8 @@ let authCacheData = JSON.parse(rawCacheData);
 let contentData = JSON.parse(rawContentData);
 let matchesDownloadedData = JSON.parse(rawMatchDownloads);
 let processedMatchesData = JSON.parse(rawProcessedMatches);
-let compHistoryData = JSON.parse(rawCompHistory);
+// let compHistoryData = JSON.parse(rawCompHistory);
+let matchHistoryData = JSON.parse(rawMatchHistory);
 
 // let playerAliases = JSON.parse(rawPlayerAliases);
 
@@ -75,6 +78,7 @@ let EMOJI_COMP_DEMOTED = "<:rank_demote:797348431609593856>"
 let EMOJI_COMP_DRAW = "<:rank_stable:797332889971720213>"
 
 let ELO_CHART_WIDTH = 700
+let EPISODE_2_START_TIME_MILLIS = 1610442000000
 
 let USERNAME_FOR_LEADERBOARD = "knife"
 
@@ -225,54 +229,149 @@ bot.on('message', async function(msg) {
       }
     }
 
-    function saveCompHistory(userId, matches){
-      var totalSaved = 0;
-      if(compHistoryData[userId] == undefined){
-        compHistoryData[userId] = {}
-      }
-      if(compHistoryData[userId]["Matches"] == undefined){
-        compHistoryData[userId]["Matches"] = {}
-      }
-
-      for(var i = 0; i < matches.length; i++){
-        var match = matches[i]
-        var matchId = match["MatchID"]
-        var tierAfter = match["TierAfterUpdate"]
-        var matchStartTime = match["MatchStartTime"]
-
-        if(tierAfter > 0 && matchStartTime > 1610442000000){ // only store actual comp games
-          compHistoryData[userId]["Matches"][matchId] = match
-          totalSaved += 1
-        }
-      }
-
-      var compItems = Object.keys(compHistoryData[userId]["Matches"]).map(function(key) {
-        return [key, compHistoryData[userId]["Matches"][key]];
-      });
-
-      // Sort the array based on the second element
-      compItems.sort(function(firstObj, secondObj) {
-        var firstMatch = firstObj[1]
-        var secondMatch = secondObj[1]
-
-        return secondMatch["MatchStartTime"] - firstMatch["MatchStartTime"]
-      })
-
-      var matchSortArray = []
-      for(var i = 0; i < compItems.length; i++){
-        var match = compItems[i][1]
-        var matchId = match["MatchID"]
-        matchSortArray.push(matchId)
-      }
-
-      compHistoryData[userId]["MatchSort"] = matchSortArray
-
-      fs.writeFileSync('private/compHistory.json', JSON.stringify(compHistoryData, null, 2), 'utf-8');
-      return totalSaved
-    }
+    // function saveCompHistory(userId, matches){
+    //   var totalSaved = 0;
+    //   if(compHistoryData[userId] == undefined){
+    //     compHistoryData[userId] = {}
+    //   }
+    //   if(compHistoryData[userId]["Matches"] == undefined){
+    //     compHistoryData[userId]["Matches"] = {}
+    //   }
+    //
+    //   for(var i = 0; i < matches.length; i++){
+    //     var match = matches[i]
+    //     var matchId = match["MatchID"]
+    //     var tierAfter = match["TierAfterUpdate"]
+    //     var matchStartTime = match["MatchStartTime"]
+    //
+    //     if(matchStartTime > 1610442000000){
+    //       if(tierAfter > 0){ // only store actual comp games
+    //         compHistoryData[userId]["Matches"][matchId] = match
+    //         totalSaved += 1
+    //       }else if(tierAfter == 0){
+    //
+    //       }
+    //     }
+    //   }
+    //
+    //   var compItems = Object.keys(compHistoryData[userId]["Matches"]).map(function(key) {
+    //     return [key, compHistoryData[userId]["Matches"][key]];
+    //   });
+    //
+    //   // Sort the array based on the second element
+    //   compItems.sort(function(firstObj, secondObj) {
+    //     var firstMatch = firstObj[1]
+    //     var secondMatch = secondObj[1]
+    //
+    //     return secondMatch["MatchStartTime"] - firstMatch["MatchStartTime"]
+    //   })
+    //
+    //   var matchSortArray = []
+    //   for(var i = 0; i < compItems.length; i++){
+    //     var match = compItems[i][1]
+    //     var matchId = match["MatchID"]
+    //     matchSortArray.push(matchId)
+    //   }
+    //
+    //   compHistoryData[userId]["MatchSort"] = matchSortArray
+    //
+    //   fs.writeFileSync('private/compHistory.json', JSON.stringify(compHistoryData, null, 2), 'utf-8');
+    //   return totalSaved
+    // }
 
     function calcElo(tierAfter, rpAfter){
       return (tierAfter*100) - 300 + rpAfter;
+    }
+
+    function downloadMatchHistory(accessToken, entitlementsToken, competitiveupdatesEndpointResult){
+
+      // this will download the matches that havent already been downloaded, and add it to
+      var subject = competitiveupdatesEndpointResult["Subject"]
+      var matchInfoData = competitiveupdatesEndpointResult["Matches"]
+
+      var matchInfoDict = {}
+      for(var i = 0; i < matchInfoData.length; i++){
+        matchInfoDict[matchInfoData[i]["MatchID"]] = matchInfoData[i]
+      }
+
+
+      if(matchesDownloadedData[subject] == undefined){
+        matchesDownloadedData[subject] = {}
+      }
+
+      if(matchHistoryData[subject] == undefined){
+        matchHistoryData[subject] = {
+          "Matches":{},
+          "MatchSort":[]
+        }
+      }
+
+      var matchDetailsPromises = matchInfoData.reduce(function (res, matchInfo) {
+        var matchId = matchInfo["MatchID"]
+        var matchStart = matchInfo["MatchStartTime"]
+        if(matchesDownloadedData[subject][matchId] == undefined && matchStart > 1610442000000){
+          const options = {
+              url: 'https://pd.na.a.pvp.net/match-details/v1/matches/'+matchId,
+              method: 'GET',
+              headers: {
+                  "Content-Type": "application/json",
+                  'Authorization': 'Bearer '+accessToken,
+                  'X-Riot-Entitlements-JWT': entitlementsToken
+              },
+          };
+          var req = requestPromise(options)
+          res.push(req);
+        }
+        return res;
+      }, []);
+
+      Promise.all(matchDetailsPromises).then((allMatchData) => {
+        for(var i = 0; i < allMatchData.length; i++){
+          var matchData = JSON.parse(allMatchData[i])
+          // console.log("DDDD "+JSON.stringify(matchData))
+          var matchID = matchData["matchInfo"]["matchId"]
+          var queueID = matchData["matchInfo"]["queueID"]
+
+          var rawPath = rawMatchPath(matchID)
+          fs.writeFileSync(rawPath, JSON.stringify(matchData, null, 2), 'utf8');
+          matchesDownloadedData[subject][matchID] = 1
+
+          matchHistoryData[subject]["Matches"][matchID] = matchInfoDict[matchID]
+
+          processMatchData(matchID, matchData, function(){
+            bot.channels.cache.get("798343660001165332").send("Processed match "+matchId+" for user "+subject);
+          }, false)
+        }
+        doAllComputation()
+
+
+        var matchItems = Object.keys(matchHistoryData[subject]["Matches"]).map(function(key) {
+          return [key, matchHistoryData[subject]["Matches"][key]];
+        });
+
+        // Sort the array based on the second element
+        matchItems.sort(function(firstObj, secondObj) {
+          var firstMatch = firstObj[1]
+          var secondMatch = secondObj[1]
+
+          return secondMatch["MatchStartTime"] - firstMatch["MatchStartTime"]
+        })
+
+        var matchSortArray = []
+        for(var i = 0; i < matchItems.length; i++){
+          var match = matchItems[i][1]
+          var matchId = match["MatchID"]
+          matchSortArray.push(matchId)
+        }
+
+        matchHistoryData[subject]["MatchSort"] = matchSortArray
+
+
+
+        fs.writeFileSync('private/matchHistory.json', JSON.stringify(matchHistoryData, null, 2), 'utf-8');
+        fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2), 'utf-8');
+
+      });
     }
 
     function displayUserElo(userId, usernameArg, accessToken, entitlementsToken){
@@ -289,18 +388,17 @@ bot.on('message', async function(msg) {
       request(options, async function(err, res, body) {
         let json = JSON.parse(body);
 
+        downloadMatchHistory(accessToken, entitlementsToken, json)
         let matchData = json["Matches"]
         matchData.sort((a, b) => (a["MatchStartTime"] > b["MatchStartTime"]) ? -1 : 1)
-
-        saveCompHistory(userId, matchData)
 
         var numToShow = 3;
         if(args.length >= 3){
           let count = args[2];
           numToShow = parseInt(count);
         }
-        var matchSortArray = compHistoryData[userId]["MatchSort"]
-        var numOfMatchesAvailable = matchSortArray.length
+        // var matchSortArray = compHistoryData[userId]["MatchSort"]
+        var numOfMatchesAvailable = matchData.length
         // var processedData = []
 
         var latestRank = ""
@@ -323,93 +421,100 @@ bot.on('message', async function(msg) {
 
         var embedFieldArray = []
         for(var i = 0; i < numMatchesToShow; i++){
-          let latestMatchJson = compHistoryData[userId]["Matches"][matchSortArray[i]]//matchData[i]
-          let RPBefore = latestMatchJson["RankedRatingBeforeUpdate"];
-          let RPAfter = latestMatchJson["RankedRatingAfterUpdate"];
-          let tierBefore = latestMatchJson["TierBeforeUpdate"]
-          let tierAfter = latestMatchJson["TierAfterUpdate"]
-          let matchDate = latestMatchJson["MatchStartTime"]
-          let matchID = latestMatchJson["MatchID"]
-          let competitiveMovement = latestMatchJson["CompetitiveMovement"]
+          let latestMatchJson = matchData[i]//compHistoryData[userId]["Matches"][matchSortArray[i]]//matchData[i]
+          if(latestMatchJson != undefined){
+            let RPBefore = latestMatchJson["RankedRatingBeforeUpdate"];
+            let RPAfter = latestMatchJson["RankedRatingAfterUpdate"];
+            let tierBefore = latestMatchJson["TierBeforeUpdate"]
+            let tierAfter = latestMatchJson["TierAfterUpdate"]
+            let matchDate = latestMatchJson["MatchStartTime"]
+            let matchID = latestMatchJson["MatchID"]
+            let competitiveMovement = latestMatchJson["CompetitiveMovement"]
 
-          ensureGameIsDownloaded(userId, matchID, accessToken, entitlementsToken)
+            if(tierAfter > 0){
 
-          let eloChange;
-          var eloSign = "+"
-          if(tierBefore != tierAfter){
-            // demote or promote
-            if(tierBefore > tierAfter){
-              // demote
-              // (elo before + 100) - (elo after)
-              eloChange = (RPAfter - RPBefore) - 100
-              eloSign = "-" // negative sign accounted for
+
+              let eloChange;
+              var eloSign = "+"
+              if(tierBefore != tierAfter){
+                // demote or promote
+                if(tierBefore > tierAfter){
+                  // demote
+                  // (elo before + 100) - (elo after)
+                  eloChange = (RPAfter - RPBefore) - 100
+                  eloSign = "-" // negative sign accounted for
+                }else{
+                  // promote
+                  //  (elo after + 100) - elo before
+                  eloChange = (RPAfter - RPBefore) + 100
+
+                }
+              }else{
+                // same
+                eloChange = RPAfter - RPBefore;
+                eloSign = eloChange < 0 ? "" : "+"
+              }
+              let eloChangeFromData = latestMatchJson["RankedRatingEarned"]
+              var showBothEloChange = eloChangeFromData != eloChange
+
+              let rankName = RANKS[tierAfter];
+              var currentElo = calcElo(tierAfter, RPAfter)
+
+              if(i == 0){
+                latestRank = rankName
+                latestElo = currentElo
+                latestTier = tierAfter
+              }
+
+              var d = new Date(matchDate)
+              // var day = dateFormat(d, "mm/dd/yy h:MM:ss tt");
+              var fieldDay = dateFormat(d, "m/d h:MMtt");
+
+              var endString = debugMode ? " Match ID: "+matchID+"" : ""
+              // matchString += "Comp Game started on "+day+": **"+eloSign+eloChange+" RP **"+endString
+              var compMovementEmoji = ""
+              switch(competitiveMovement){
+                case COMP_PROMOTED:
+                  compMovementEmoji = EMOJI_COMP_PROMOTED
+                  break;
+                case COMP_INC_MAJOR:
+                  compMovementEmoji = EMOJI_COMP_INC_MAJOR
+                  break;
+                case COMP_INCRASE:
+                  compMovementEmoji = EMOJI_COMP_INCRASE
+                  break;
+                case COMP_INC_MINOR:
+                  compMovementEmoji = EMOJI_COMP_INC_MINOR
+                  break;
+                case COMP_DEC_MINOR:
+                  compMovementEmoji = EMOJI_COMP_DEC_MINOR
+                  break;
+                case COMP_DECREASE:
+                  compMovementEmoji = EMOJI_COMP_DECREASE
+                  break;
+                case COMP_DEC_MAJOR:
+                  compMovementEmoji = EMOJI_COMP_DEC_MAJOR
+                  break;
+                case COMP_DEMOTED:
+                  compMovementEmoji = EMOJI_COMP_DEMOTED
+                  break;
+                case COMP_DRAW:
+                  compMovementEmoji = EMOJI_COMP_DRAW
+                  break;
+                default:
+                // case "MOVEMENT_UNKNOWN":
+                  break;
+
+              }
+
+              var extraElo = showBothEloChange ? "** ("+eloChangeFromData+") ** RR **" : " RR **"
+              var embedFieldObject = {name:compMovementEmoji+"**"+eloSign+eloChange+extraElo, value:fieldDay+endString, inline: debugMode ? false : true}
+              embedFieldArray.push(embedFieldObject)
+
             }else{
-              // promote
-              //  (elo after + 100) - elo before
-              eloChange = (RPAfter - RPBefore) + 100
-
+              numMatchesToShow += 1
             }
-          }else{
-            // same
-            eloChange = RPAfter - RPBefore;
-            eloSign = eloChange < 0 ? "" : "+"
           }
-          let eloChangeFromData = latestMatchJson["RankedRatingEarned"]
-          var showBothEloChange = eloChangeFromData != eloChange
-
-          let rankName = RANKS[tierAfter];
-          var currentElo = calcElo(tierAfter, RPAfter)
-
-          if(i == 0){
-            latestRank = rankName
-            latestElo = currentElo
-            latestTier = tierAfter
-          }
-
-          var d = new Date(matchDate)
-          // var day = dateFormat(d, "mm/dd/yy h:MM:ss tt");
-          var fieldDay = dateFormat(d, "m/d h:MMtt");
-
-          var endString = debugMode ? " Match ID: "+matchID+"" : ""
-          // matchString += "Comp Game started on "+day+": **"+eloSign+eloChange+" RP **"+endString
-          var compMovementEmoji = ""
-          switch(competitiveMovement){
-            case COMP_PROMOTED:
-              compMovementEmoji = EMOJI_COMP_PROMOTED
-              break;
-            case COMP_INC_MAJOR:
-              compMovementEmoji = EMOJI_COMP_INC_MAJOR
-              break;
-            case COMP_INCRASE:
-              compMovementEmoji = EMOJI_COMP_INCRASE
-              break;
-            case COMP_INC_MINOR:
-              compMovementEmoji = EMOJI_COMP_INC_MINOR
-              break;
-            case COMP_DEC_MINOR:
-              compMovementEmoji = EMOJI_COMP_DEC_MINOR
-              break;
-            case COMP_DECREASE:
-              compMovementEmoji = EMOJI_COMP_DECREASE
-              break;
-            case COMP_DEC_MAJOR:
-              compMovementEmoji = EMOJI_COMP_DEC_MAJOR
-              break;
-            case COMP_DEMOTED:
-              compMovementEmoji = EMOJI_COMP_DEMOTED
-              break;
-            case COMP_DRAW:
-              compMovementEmoji = EMOJI_COMP_DRAW
-              break;
-            default:
-            // case "MOVEMENT_UNKNOWN":
-              break;
-
-          }
-
-          var extraElo = showBothEloChange ? "** ("+eloChangeFromData+") ** RR **" : " RR **"
-          var embedFieldObject = {name:compMovementEmoji+"**"+eloSign+eloChange+extraElo, value:fieldDay+endString, inline: debugMode ? false : true}
-          embedFieldArray.push(embedFieldObject)
         }
         var userStats = totalUserStats[userId];
         var userFullName;
@@ -448,7 +553,7 @@ bot.on('message', async function(msg) {
         var sentEmbed = await msg.channel.send({embed});
 
 
-        var eloData = getCompEloHistoryList(userId)
+        var eloData = getCompEloHistoryList(matchData)
         var eloChart = buildEloChart(eloData, userFullName, userColor)
         if(eloChart != null){
           chartURLFromObject(eloChart, function(url){
@@ -466,19 +571,19 @@ bot.on('message', async function(msg) {
       });
     }
 
-    function ensureGameIsDownloaded(userId, matchId, accessToken, entitlementsToken){
-      handleMatchDownloading(userId, matchId, accessToken, entitlementsToken, function(){
-        processMatchData(matchId, rawMatchPath(matchId), function(){
-          bot.channels.cache.get("798343660001165332").send("Processed match "+matchId+" for user "+userId);
-          doAllComputation()
-        }, false)
-        // fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
-      }, function(){
-        fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
-      }, function(err){
-        bot.channels.cache.get("798343660001165332").send("Error ensuring game is downloaded "+err);
-      })
-    }
+    // function ensureGameIsDownloaded(userId, matchId, accessToken, entitlementsToken){
+    //   handleMatchDownloading(userId, matchId, accessToken, entitlementsToken, function(){
+    //     processMatchData(matchId, rawMatchPath(matchId), function(){
+    //       bot.channels.cache.get("798343660001165332").send("Processed match "+matchId+" for user "+userId);
+    //       doAllComputation()
+    //     }, false)
+    //     // fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
+    //   }, function(){
+    //     fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
+    //   }, function(err){
+    //     bot.channels.cache.get("798343660001165332").send("Error ensuring game is downloaded "+err);
+    //   })
+    // }
 
     function downloadMatchData(accessToken, entitlementsToken, matchID, downloadCompletion){
       const options = {
@@ -505,178 +610,172 @@ bot.on('message', async function(msg) {
       return MATCHES_RAW_PATH+matchID+'.json'
     }
 
-    var numCompleted = {}
-    async function handleMatchDownloading(userId, matchID, accessToken, entitlementsToken, matchDoneHandler, downloadCompletion, errComp){
-      try {
-        var matchPath = rawMatchPath(matchID);
-        var matchExists = fs.existsSync(matchPath)
-        // console.log("Mathc "+matchPath+" "+matchExists +" "+numCompleted[userId])
+    // var numCompleted = {}
+    // async function handleMatchDownloading(userId, matchID, accessToken, entitlementsToken, matchDoneHandler, downloadCompletion, errComp){
+    //   try {
+    //     var matchPath = rawMatchPath(matchID);
+    //     var matchExists = fs.existsSync(matchPath)
+    //     // console.log("Mathc "+matchPath+" "+matchExists +" "+numCompleted[userId])
+    //
+    //     if(matchesDownloadedData[userId] == undefined){
+    //       matchesDownloadedData[userId] = {}
+    //     }
+    //     if (!matchExists) {
+    //       downloadMatchData(accessToken, entitlementsToken, matchID, function(matchID_, matchData){
+    //         matchesDownloadedData[userId][matchID_] = 1;
+    //         downloadCompletion()
+    //
+    //         let matchDate = matchData["matchInfo"]["gameStartMillis"]
+    //         var d = new Date(matchDate)
+    //         var matchDayStr = dateFormat(d, "m/d h:MMtt");
+    //
+    //         bot.channels.cache.get("798343660001165332").send("Downloaded match "+matchID_+" ("+matchDayStr+") for user "+userId);
+    //       });
+    //       await sleep(2000); // rate limiting
+    //     }else{
+    //       // await sleep(100)
+    //       matchesDownloadedData[userId][matchID] = 1;
+    //       // console.log("already downloaded "+matchID)
+    //     }
+    //     matchDoneHandler()
+    //
+    //   } catch(err) {
+    //     errComp(err)
+    //   }
+    // }
 
-        if(matchesDownloadedData[userId] == undefined){
-          matchesDownloadedData[userId] = {}
-        }
-        if (!matchExists) {
-          downloadMatchData(accessToken, entitlementsToken, matchID, function(matchID_, matchData){
-            matchesDownloadedData[userId][matchID_] = 1;
-            downloadCompletion()
+    // function batchSaveMatchHistory(userId, accessToken, entitlementsToken){
+    //   var totalSaved = 0;
+    //   async function downloadMatchHistory(matchTotal, startIndex, endIndex){
+    //     if(endIndex > matchTotal){
+    //       endIndex = matchTotal
+    //     }
+    //     const matchCompHistoryOptions = {
+    //         url: 'https://pd.na.a.pvp.net/mmr/v1/players/'+userId+"/competitiveupdates?startIndex="+startIndex+"&endIndex="+endIndex,
+    //         method: 'GET',
+    //         headers: {
+    //             "Content-Type": "application/json",
+    //             'Authorization': 'Bearer '+accessToken,
+    //             'X-Riot-Entitlements-JWT': entitlementsToken
+    //         },
+    //     };
+    //     request(matchCompHistoryOptions, async function(err, res, body) {
+    //       let compHistoryData = JSON.parse(body);
+    //       let matches = compHistoryData["Matches"]
+    //       if(matches != undefined){
+    //         // console.log(JSON.stringify(matches))
+    //         totalSaved += saveCompHistory(userId, matches)
+    //         console.log("Got Comp history till "+endIndex)
+    //
+    //         if(endIndex != matchTotal){
+    //           downloadCompHistory(matchTotal, startIndex+20, endIndex+20)
+    //           await sleep(1000)
+    //         }else{
+    //           msg.channel.send("Got rank data for "+totalSaved+" competitive games")
+    //         }
+    //       }else{
+    //         msg.channel.send("Got rank data for "+totalSaved+" competitive games")
+    //       }
+    //     })
+    //   }
+    //
+    //   const matchHistoryOptions = {
+    //       url: 'https://pd.na.a.pvp.net/match-history/v1/history/'+userId+"?startIndex=0&endIndex=2",
+    //       method: 'GET',
+    //       headers: {
+    //           "Content-Type": "application/json",
+    //           'Authorization': 'Bearer '+accessToken,
+    //           'X-Riot-Entitlements-JWT': entitlementsToken
+    //       },
+    //   };
+    //   request(matchHistoryOptions, async function(err, res, body) {
+    //     let historyData = JSON.parse(body);
+    //     let total = historyData["Total"]
+    //     console.log("Downloading comp history with total "+total)
+    //     downloadCompHistory(total, 0, 20)
+    //   })
+    // }
 
-            let matchDate = matchData["matchInfo"]["gameStartMillis"]
-            var d = new Date(matchDate)
-            var matchDayStr = dateFormat(d, "m/d h:MMtt");
+    // function batchDownloadMatchData(userId, accessToken, entitlementsToken, startIndex, endIndex, allMatchMsg){
+    //   // keep getting match data until EndIndex == Total
+    //   const matchHistoryOptions = {
+    //       url: 'https://pd.na.a.pvp.net/match-history/v1/history/'+userId+"?startIndex="+startIndex+"&endIndex="+endIndex,
+    //       method: 'GET',
+    //       headers: {
+    //           "Content-Type": "application/json",
+    //           'Authorization': 'Bearer '+accessToken,
+    //           'X-Riot-Entitlements-JWT': entitlementsToken
+    //       },
+    //   };
+    //   request(matchHistoryOptions, async function(err, res, body) {
+    //     let historyData = JSON.parse(body);
+    //     let total = historyData["Total"]
+    //     if(historyData["EndIndex"] == total){
+    //       // finish
+    //     }else{
+    //       // download next batch
+    //       batchDownloadMatchData(userId, accessToken, entitlementsToken, startIndex+20, endIndex+20, allMatchMsg)
+    //     }
+    //
+    //     bot.channels.cache.get("798343660001165332").send("Batch downloading for user "+userId+" from "+startIndex+" to "+endIndex);
+    //
+    //     let histories = historyData["History"];
+    //
+    //     for(var i = 0; i < histories.length; i++){
+    //       let matchID = histories[i]["MatchID"]
+    //
+    //       handleMatchDownloading(userId, matchID, accessToken, entitlementsToken, function(){
+    //         numCompleted[userId] += 1;
+    //
+    //         if(numCompleted[userId] == parseInt(total)-1){
+    //           fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
+    //           allMatchMsg.edit("Done downloading match data. "+(numCompleted[userId]+1)+" / "+total+" matches stored.")
+    //         }
+    //       }, function(){
+    //         if(numCompleted[userId] == parseInt(total)-1){
+    //           fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
+    //           allMatchMsg.edit("Done downloading match data. "+(numCompleted[userId]+1)+" / "+total+" matches stored.")
+    //         }else{
+    //           allMatchMsg.edit("Downloading match data. "+numCompleted[userId]+" / "+total+" matches downloaded.")
+    //         }
+    //       }, function(err){
+    //         allMatchMsg.edit("ERROR CHECKING FILE EXISTS "+err)
+    //       })
+    //
+    //       // download match every 2 seconds
+    //     }
+    //   });
+    // }
 
-            bot.channels.cache.get("798343660001165332").send("Downloaded match "+matchID_+" ("+matchDayStr+") for user "+userId);
-          });
-          await sleep(2000); // rate limiting
-        }else{
-          // await sleep(100)
-          matchesDownloadedData[userId][matchID] = 1;
-          // console.log("already downloaded "+matchID)
-        }
-        matchDoneHandler()
+    // async function processAllUnprocessedGames(forceProcess){
+    //   // loop through raw files
+    //   const dir = await fs.promises.opendir(MATCHES_RAW_PATH)
+    //   var gamesToProcess = 0
+    //   for await (const dirent of dir) {
+    //     // console.log(dirent.name)
+    //     let matchFileName = dirent.name
+    //     let matchID = matchFileName.split(".")[0]
+    //     if(processedMatchesData[matchID] == undefined || forceProcess){
+    //       processMatchData(matchID, rawMatchPath(matchID), function(){
+    //         console.log("Processed "+matchID)
+    //         gamesToProcess += 1
+    //       }, forceProcess)
+    //     }
+    //   }
+    //   if(gamesToProcess > 0){
+    //     msg.channel.send("Processed "+gamesToProcess+" competitive games.")
+    //   }
+    // }
 
-      } catch(err) {
-        errComp(err)
-      }
-    }
-
-    function batchSaveCompHistory(userId, accessToken, entitlementsToken){
-      var totalSaved = 0;
-      async function downloadCompHistory(matchTotal, startIndex, endIndex){
-        if(endIndex > matchTotal){
-          endIndex = matchTotal
-        }
-        const matchCompHistoryOptions = {
-            url: 'https://pd.na.a.pvp.net/mmr/v1/players/'+userId+"/competitiveupdates?startIndex="+startIndex+"&endIndex="+endIndex,
-            method: 'GET',
-            headers: {
-                "Content-Type": "application/json",
-                'Authorization': 'Bearer '+accessToken,
-                'X-Riot-Entitlements-JWT': entitlementsToken
-            },
-        };
-        request(matchCompHistoryOptions, async function(err, res, body) {
-          let compHistoryData = JSON.parse(body);
-          let matches = compHistoryData["Matches"]
-          if(matches != undefined){
-            // console.log(JSON.stringify(matches))
-            totalSaved += saveCompHistory(userId, matches)
-            console.log("Got Comp history till "+endIndex)
-
-            if(endIndex != matchTotal){
-              downloadCompHistory(matchTotal, startIndex+20, endIndex+20)
-              await sleep(1000)
-            }else{
-              msg.channel.send("Got rank data for "+totalSaved+" competitive games")
-            }
-          }else{
-            msg.channel.send("Got rank data for "+totalSaved+" competitive games")
-          }
-        })
-      }
-
-      const matchHistoryOptions = {
-          url: 'https://pd.na.a.pvp.net/match-history/v1/history/'+userId+"?startIndex=0&endIndex=2",
-          method: 'GET',
-          headers: {
-              "Content-Type": "application/json",
-              'Authorization': 'Bearer '+accessToken,
-              'X-Riot-Entitlements-JWT': entitlementsToken
-          },
-      };
-      request(matchHistoryOptions, async function(err, res, body) {
-        let historyData = JSON.parse(body);
-        let total = historyData["Total"]
-        console.log("Downloading comp history with total "+total)
-        downloadCompHistory(total, 0, 20)
-      })
-    }
-
-    function batchDownloadMatchData(userId, accessToken, entitlementsToken, startIndex, endIndex, allMatchMsg){
-      // keep getting match data until EndIndex == Total
-      const matchHistoryOptions = {
-          url: 'https://pd.na.a.pvp.net/match-history/v1/history/'+userId+"?startIndex="+startIndex+"&endIndex="+endIndex,
-          method: 'GET',
-          headers: {
-              "Content-Type": "application/json",
-              'Authorization': 'Bearer '+accessToken,
-              'X-Riot-Entitlements-JWT': entitlementsToken
-          },
-      };
-      request(matchHistoryOptions, async function(err, res, body) {
-        let historyData = JSON.parse(body);
-        let total = historyData["Total"]
-        if(historyData["EndIndex"] == total){
-          // finish
-        }else{
-          // download next batch
-          batchDownloadMatchData(userId, accessToken, entitlementsToken, startIndex+20, endIndex+20, allMatchMsg)
-        }
-
-        bot.channels.cache.get("798343660001165332").send("Batch downloading for user "+userId+" from "+startIndex+" to "+endIndex);
-
-        let histories = historyData["History"];
-
-        for(var i = 0; i < histories.length; i++){
-          let matchID = histories[i]["MatchID"]
-
-          handleMatchDownloading(userId, matchID, accessToken, entitlementsToken, function(){
-            numCompleted[userId] += 1;
-
-            if(numCompleted[userId] == parseInt(total)-1){
-              fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
-              allMatchMsg.edit("Done downloading match data. "+(numCompleted[userId]+1)+" / "+total+" matches stored.")
-            }
-          }, function(){
-            if(numCompleted[userId] == parseInt(total)-1){
-              fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
-              allMatchMsg.edit("Done downloading match data. "+(numCompleted[userId]+1)+" / "+total+" matches stored.")
-            }else{
-              allMatchMsg.edit("Downloading match data. "+numCompleted[userId]+" / "+total+" matches downloaded.")
-            }
-          }, function(err){
-            allMatchMsg.edit("ERROR CHECKING FILE EXISTS "+err)
-          })
-
-          // download match every 2 seconds
-        }
-      });
-    }
-
-    async function processAllUnprocessedGames(forceProcess){
-      // loop through raw files
-      const dir = await fs.promises.opendir(MATCHES_RAW_PATH)
-      var gamesToProcess = 0
-      for await (const dirent of dir) {
-        // console.log(dirent.name)
-        let matchFileName = dirent.name
-        let matchID = matchFileName.split(".")[0]
-        if(processedMatchesData[matchID] == undefined || forceProcess){
-          processMatchData(matchID, rawMatchPath(matchID), function(){
-            console.log("Processed "+matchID)
-            gamesToProcess += 1
-          }, forceProcess)
-        }
-      }
-      if(gamesToProcess > 0){
-        msg.channel.send("Processed "+gamesToProcess+" competitive games.")
-      }
-    }
-
-    function processMatchData(matchID, dataPath, didProcess, forceProcess){
+    function processMatchData(matchID, matchData, didProcess, forceProcess){
       if(processedMatchesData[matchID] == undefined){
         processedMatchesData[matchID] = {}
       }
 
-      let matchDataRaw = fs.readFileSync(dataPath);
       try{
-        let matchData = JSON.parse(matchDataRaw)
-
-        let matchType = matchData["matchInfo"]["queueID"];
-        // console.log("MATCH TYPE "+matchType)
         // TODO for now only process competitive games.
-        if(matchType == "competitive"){
-
-          let matchStartTime = matchData["matchInfo"]["gameStartMillis"]
+        let matchStartTime = matchData["matchInfo"]["gameStartMillis"]
+        if(matchData["matchInfo"]["queueID"] == "competitive"){
           let folderPath = MATCHES_PROCESSED_PATH+matchID
           // console.log(folderPath)
           if (!fs.existsSync(folderPath)){
@@ -709,11 +808,11 @@ bot.on('message', async function(msg) {
             didProcess()
           }
           fs.writeFileSync('private/processedMatches.json', JSON.stringify(processedMatchesData, null, 2) , 'utf-8');
-          console.log("Handled "+dataPath+", processed: "+didProcessMatch)
+          console.log("Handled "+folderPath+", processed: "+didProcessMatch)
         }
       }catch(err){
          // bad game
-         console.log("ERROR "+err)
+         console.log("ERROR "+err+"_");//+JSON.stringify(matchDataRaw))
       }
     }
 
@@ -1045,6 +1144,7 @@ bot.on('message', async function(msg) {
       // fs.writeFileSync(folderPath+'/hits.json', JSON.stringify(hitsData, null, 2) , 'utf-8');
     }
 
+    // for charting
     function eloFromCompInfo(matchInfo){
       let RPAfter = matchInfo["RankedRatingAfterUpdate"];
       let tierAfter = matchInfo["TierAfterUpdate"]
@@ -1052,25 +1152,31 @@ bot.on('message', async function(msg) {
       return currentElo
     }
 
-    function getCompEloHistoryList(userId){
+    // for charting
+    // now going to assume its sorted
+    function getCompEloHistoryList(compUpdatesMatches){
       // return array of elo in order as int array [1234, 1255, ...]
       // first is newest, right is oldest
-      let compHistory = compHistoryData[userId]
-      let matchSort = compHistory["MatchSort"]
+      // let compHistory = matchHistoryData[userId]
+      // let matchSort = compHistory["MatchSort"]
       var eloArray = []
       var dateArray = []
-      for(var i = 0; i < matchSort.length; i++){
-        var matchId = matchSort[i]
-        var matchData = compHistory["Matches"][matchId]
-        var matchStartDate = matchData["MatchStartTime"]
+      for(var i = 0; i < compUpdatesMatches.length; i++){
+        // var matchId = matchSort[i]
+        var matchData = compUpdatesMatches[i]//compHistory["Matches"][matchId]
+        if(matchData["TierAfterUpdate"] > 0){
+          var matchStartDate = matchData["MatchStartTime"]
 
-        eloArray.push(eloFromCompInfo(matchData))
+          if(matchStartDate > EPISODE_2_START_TIME_MILLIS){
+            eloArray.push(eloFromCompInfo(matchData))
 
-        var d = new Date(matchStartDate)
-        // var day = dateFormat(d, "mm/dd/yy h:MM:ss tt");
-        var matchDay = dateFormat(d, "m/d");
+            var d = new Date(matchStartDate)
+            // var day = dateFormat(d, "mm/dd/yy h:MM:ss tt");
+            var matchDay = dateFormat(d, "m/d");
 
-        dateArray.push(matchDay)
+            dateArray.push(matchDay)
+          }
+        }
       }
       return {"dates":dateArray, "elo":eloArray}
     }
@@ -1091,6 +1197,9 @@ bot.on('message', async function(msg) {
         }
         filenames.forEach(function(filename) {
           try{
+            let matchId = filename
+
+            // TODO find a way to only process comps
             let rawHitsData = fs.readFileSync(MATCHES_PROCESSED_PATH + filename + "/hits.json");
             let matchHitsData = JSON.parse(rawHitsData)
 
@@ -1817,7 +1926,7 @@ bot.on('message', async function(msg) {
       }
 
       function readAllMatches(){
-        var matches = compHistoryData[userId]["MatchSort"].slice(0, 8) // restrict to 8 matches to keep 1024 char limit
+        var matches = matchHistoryData[userId]["MatchSort"].slice(0, 8) // restrict to 8 matches to keep 1024 char limit
         var roundStatsFiles = matches.map(function(matchId){
           return MATCHES_PROCESSED_PATH+matchId+"/users.json"
         })
@@ -1843,7 +1952,7 @@ bot.on('message', async function(msg) {
         return 0;
       }
 
-      if(compHistoryData[userId] != undefined){
+      if(matchHistoryData[userId] != undefined){
         readAllMatches().then(function(files){
           // var headers = ["agent", "kda & score", "place & MVPs", "map"]
           var dataArray = []
@@ -1945,16 +2054,16 @@ bot.on('message', async function(msg) {
             if(arg == "elo"){
               displayUserElo(userId, usernameArg, accessToken, entitlementsToken)
             }else if(arg == "gam"){
-              let allMatchMsg = await msg.channel.send("Downloading all raw match data for "+usernameArg)
-              numCompleted[userId] = 0;
-
-              if(matchesDownloadedData[userId] == undefined){
-                matchesDownloadedData[userId] = {}
-              }
-
-              batchDownloadMatchData(userId, accessToken, entitlementsToken, 0, 20, allMatchMsg)
+              // let allMatchMsg = await msg.channel.send("Downloading all raw match data for "+usernameArg)
+              // numCompleted[userId] = 0;
+              //
+              // if(matchesDownloadedData[userId] == undefined){
+              //   matchesDownloadedData[userId] = {}
+              // }
+              //
+              // batchDownloadMatchData(userId, accessToken, entitlementsToken, 0, 20, allMatchMsg)
             }else if(arg == "uocm"){ // update old comp matches
-              batchSaveCompHistory(userId, accessToken, entitlementsToken)
+              // batchSaveMatchHistory(userId, accessToken, entitlementsToken)
             }
           });
         }else{
@@ -1965,17 +2074,42 @@ bot.on('message', async function(msg) {
       }
     }
 
+    if(arg == "deletematches"){
+      let userId = args[1]
+      if(userId != undefined){
+        let matchesDownloadedForUser = matchesDownloadedData[userId]
+        for (var key in matchesDownloadedForUser) {
+          // check if the property/key is defined in the object itself, not in parent
+          if (matchesDownloadedForUser.hasOwnProperty(key)) {
+            if(matchesDownloadedForUser[key] == 1){
+              try {
+                fs.unlinkSync(MATCHES_RAW_PATH+key+".json")
+                fs.rmdirSync(MATCHES_PROCESSED_PATH+key, { recursive: true })
+                console.log("deleted "+key)
+                //file removed
+              } catch(err) {
+                console.error(err)
+              }
+            }
+          }
+        }
+        matchesDownloadedData[userId] = {}
+        fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
+
+      }
+    }
+
     if(arg == "processgame" || arg == "pag" || arg == "fpag"){
       if(arg == "pag"){
         // process all games
         processAllUnprocessedGames(false)
       }else if(arg == "processgame"){
-        if(args.length >= 2){
-          let matchID = args[1]
-          processMatchData(matchID, rawMatchPath(matchID), function(){
-            msg.channel.send("Processed "+matchID)
-          }, true)
-        }
+        // if(args.length >= 2){
+        //   let matchID = args[1]
+        //   processMatchData(matchID, rawMatchPath(matchID), function(){
+        //     msg.channel.send("Processed "+matchID)
+        //   }, true)
+        // }
       }else if(arg == "fpag"){
         console.log("Force")
         processAllUnprocessedGames(true)

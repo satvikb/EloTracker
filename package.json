@@ -27,6 +27,7 @@
     "javascript-stringify": "^2.0.1",
     "querystring": "^0.2.0",
     "request": "^2.88.2",
+    "request-promise": "^4.2.6",
     "ytdl-core-discord": "^1.2"
   }
 }
