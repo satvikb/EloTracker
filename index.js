@@ -445,15 +445,6 @@ bot.on('message', async function(msg) {
           .addFields(embedFieldArray)
         }
 
-              // .addField("\u200B", "\u200B", false)
-              // .addField(latestRank, currentEloAddOnText, false)
-              // .addField('Inline field title', 'Some value here', true)
-              // .setImage('https://i.imgur.com/wSTFkRM.png')
-              // .setTimestamp()
-              // .setFooter('Some footer text here', 'https://i.imgur.com/wSTFkRM.png')
-              // .setTitle('Wicked Sweet Title')
-
-
         var sentEmbed = await msg.channel.send({embed});
 
 
@@ -461,7 +452,7 @@ bot.on('message', async function(msg) {
         var eloChart = buildEloChart(eloData, userFullName, userColor)
         if(eloChart != null){
           chartURLFromObject(eloChart, function(url){
-            console.log(url)
+            // console.log(url)
             embed.setImage(url)
             sentEmbed.edit(embed)
           })
@@ -567,7 +558,7 @@ bot.on('message', async function(msg) {
           let compHistoryData = JSON.parse(body);
           let matches = compHistoryData["Matches"]
           if(matches != undefined){
-            console.log(JSON.stringify(matches))
+            // console.log(JSON.stringify(matches))
             totalSaved += saveCompHistory(userId, matches)
             console.log("Got Comp history till "+endIndex)
 
@@ -706,6 +697,7 @@ bot.on('message', async function(msg) {
             processedMatchesData[matchID][PROCESSING_USER_ANALYSIS] = 1;
             didProcessMatch = true;
           }
+          console.log("processed users")
 
           if(processedMatchesData[matchID][PROCESSING_ROUND_ANALYSIS] == undefined || forceProcess){
             processMatchRoundsAnalysis(folderPath, matchData)
@@ -781,43 +773,48 @@ bot.on('message', async function(msg) {
           redTeamScore += 1
         }
 
-        var planter = roundData["bombPlanter"]
-        var defuser = roundData["bombDefuser"]
-        if(planter != undefined){
-          if(playerData[planter]["stats"]["plants"] == undefined){
-            playerData[planter]["stats"]["plants"] = 0
-          }
-          playerData[planter]["stats"]["plants"] += 1
-        }
+        let roundResult = roundData["roundResultCode"]
 
-        if(defuser != undefined){
-          if(playerData[defuser]["stats"]["defuses"] == undefined){
-            playerData[defuser]["stats"]["defuses"] = 0
+        if(roundResult != "Surrendered"){
+          var planter = roundData["bombPlanter"]
+          var defuser = roundData["bombDefuser"]
+          if(planter != undefined){
+            if(playerData[planter]["stats"]["plants"] == undefined){
+              playerData[planter]["stats"]["plants"] = 0
+            }
+            playerData[planter]["stats"]["plants"] += 1
           }
-          playerData[defuser]["stats"]["defuses"] += 1
-        }
 
-        var earlistKillTime = Number.MAX_SAFE_INTEGER
-        var earliestKillSubject = ""
-        // calculate first bloods
-        var roundPlayerStats = roundData["playerStats"]
-        for(var p = 0; p < roundPlayerStats.length; p++){
-          var player = roundPlayerStats[p]
-          var curSubject = player["subject"]
-          var playerKills = player["kills"];
-          for(var k = 0; k < playerKills.length; k++){
-            var killData = playerKills[k]
-            var killTime = killData["roundTime"]
-            if(killTime < earlistKillTime){
-              earlistKillTime = killTime
-              earliestKillSubject = curSubject
+          if(defuser != undefined){
+            if(playerData[defuser]["stats"]["defuses"] == undefined){
+              playerData[defuser]["stats"]["defuses"] = 0
+            }
+            playerData[defuser]["stats"]["defuses"] += 1
+          }
+
+          var earlistKillTime = Number.MAX_SAFE_INTEGER
+          var earliestKillSubject = ""
+          // calculate first bloods
+          var roundPlayerStats = roundData["playerStats"]
+          for(var p = 0; p < roundPlayerStats.length; p++){
+            var player = roundPlayerStats[p]
+            var curSubject = player["subject"]
+            var playerKills = player["kills"];
+            for(var k = 0; k < playerKills.length; k++){
+              var killData = playerKills[k]
+              var killTime = killData["roundTime"]
+              if(killTime < earlistKillTime){
+                earlistKillTime = killTime
+                earliestKillSubject = curSubject
+              }
             }
           }
+
+          if(playerData[earliestKillSubject]["stats"]["firstBloods"] == undefined){
+            playerData[earliestKillSubject]["stats"]["firstBloods"] = 0
+          }
+          playerData[earliestKillSubject]["stats"]["firstBloods"] += 1
         }
-        if(playerData[earliestKillSubject]["stats"]["firstBloods"] == undefined){
-          playerData[earliestKillSubject]["stats"]["firstBloods"] = 0
-        }
-        playerData[earliestKillSubject]["stats"]["firstBloods"] += 1
       }
 
       var winningTeam = redTeamScore > blueTeamScore ? "Red" : (redTeamScore == blueTeamScore ? "Draw" : "Blue")
@@ -833,27 +830,6 @@ bot.on('message', async function(msg) {
         matchMVP = blueTeamHighestScoreSubject
         teamMVP = redTeamHighestScoreSubject
       }
-      // switch (winningTeam) {
-      //   case "Draw":
-      //     if(redTeamHighestScore > blueTeamHighestScore){
-      //       // red team match mvp, blue team team mvp
-      //       teamMVP = blueTeamHighestScoreSubject
-      //       matchMVP = redTeamHighestScoreSubject
-      //     }else{
-      //       teamMVP = redTeamHighestScoreSubject
-      //       matchMVP = blueTeamHighestScoreSubject
-      //     }
-      //     break;
-      //   case "Red":
-      //     teamMVP = blueTeamHighestScoreSubject
-      //     matchMVP = redTeamHighestScoreSubject
-      //     break;
-      //   case "Blue":
-      //     teamMVP = redTeamHighestScoreSubject
-      //     matchMVP = blueTeamHighestScoreSubject
-      //     break;
-      //   default:
-      // }
 
       var gameInfoData = {
         "teamMVP":teamMVP,
@@ -934,95 +910,98 @@ bot.on('message', async function(msg) {
         roundWinInfo[""+roundNum] = winningTeam
         roundResultInfo[""+roundNum] = roundResult
 
+        if(roundResult != "Surrendered"){
+
         let roundPlayerStats = roundData["playerStats"];
         for(var j = 0; j < roundPlayerStats.length; j++){
-          let playerData = roundPlayerStats[j];
-          let subject = playerData["subject"];
-          let playerTeam = teamInfo[subject]
+            let playerData = roundPlayerStats[j];
+            let subject = playerData["subject"];
+            let playerTeam = teamInfo[subject]
 
-          let score = playerData["score"];
+            let score = playerData["score"];
 
-          if(roundDataFinal[subject] == undefined){
-            roundDataFinal[subject] = []
-          }
-
-          if(roundScoreTotals[subject] == undefined){
-            roundScoreTotals[subject] = 0
-          }
-          roundScoreTotals[subject] += score
-
-
-
-          var roundPlayerData = {}
-
-          roundPlayerData["roundNum"] = roundNum
-
-          // compute damage breakdown
-          roundPlayerData["damage"] = {}
-          roundPlayerData["damage"]["total"] = 0;
-          let damageData = playerData["damage"];
-          var damageBreakdown = []
-          for(var k = 0; k < damageData.length; k++){
-            let damageEntity = damageData[k];
-            let breakdownEntity = {
-              "receiver":damageEntity["receiver"],
-              "damage":damageEntity["damage"]
+            if(roundDataFinal[subject] == undefined){
+              roundDataFinal[subject] = []
             }
-            roundPlayerData["damage"]["total"] += damageEntity["damage"]
-            damageBreakdown.push(breakdownEntity)
-          }
-          roundPlayerData["damage"]["breakdown"] = damageBreakdown
 
-          // compute kills
-          var killBreakdown = []
-          let killData = playerData["kills"]
-          for(var k = 0; k < killData.length; k++){
-            let killEntity = killData[k]
-            let roundTime = killEntity["roundTime"]
-            let gameTime = killEntity["gameTime"]
-            let victim = killEntity["victim"]
-            let killer = killEntity["killer"]
-            let victimLocation = killEntity["victimLocation"]
+            if(roundScoreTotals[subject] == undefined){
+              roundScoreTotals[subject] = 0
+            }
+            roundScoreTotals[subject] += score
 
-            let killerLocation = {}
-            var playerLocations = killEntity["playerLocations"]
-            for(var l = 0; l < playerLocations.length; l++){
-              let playerLocation = playerLocations[l];
-              let playerLocationSubject = playerLocation["subject"]
 
-              if(playerLocationSubject == killer){
-                killerLocation["x"] = playerLocation["location"]["x"]
-                killerLocation["y"] = playerLocation["location"]["y"]
-                killerLocation["viewRadians"] = playerLocation["viewRadians"]
-                break;
+
+            var roundPlayerData = {}
+
+            roundPlayerData["roundNum"] = roundNum
+
+            // compute damage breakdown
+            roundPlayerData["damage"] = {}
+            roundPlayerData["damage"]["total"] = 0;
+            let damageData = playerData["damage"];
+            var damageBreakdown = []
+            for(var k = 0; k < damageData.length; k++){
+              let damageEntity = damageData[k];
+              let breakdownEntity = {
+                "receiver":damageEntity["receiver"],
+                "damage":damageEntity["damage"]
               }
+              roundPlayerData["damage"]["total"] += damageEntity["damage"]
+              damageBreakdown.push(breakdownEntity)
             }
+            roundPlayerData["damage"]["breakdown"] = damageBreakdown
 
-            var playerKillData = {}
-            playerKillData["roundTime"] = roundTime
-            playerKillData["gameTime"] = gameTime
-            playerKillData["victim"] = victim
-            playerKillData["victimLocation"] = victimLocation
-            playerKillData["killerLocation"] = killerLocation
-            killBreakdown.push(playerKillData)
+            // compute kills
+            var killBreakdown = []
+            let killData = playerData["kills"]
+            for(var k = 0; k < killData.length; k++){
+              let killEntity = killData[k]
+              let roundTime = killEntity["roundTime"]
+              let gameTime = killEntity["gameTime"]
+              let victim = killEntity["victim"]
+              let killer = killEntity["killer"]
+              let victimLocation = killEntity["victimLocation"]
 
+              let killerLocation = {}
+              var playerLocations = killEntity["playerLocations"]
+              for(var l = 0; l < playerLocations.length; l++){
+                let playerLocation = playerLocations[l];
+                let playerLocationSubject = playerLocation["subject"]
+
+                if(playerLocationSubject == killer){
+                  killerLocation["x"] = playerLocation["location"]["x"]
+                  killerLocation["y"] = playerLocation["location"]["y"]
+                  killerLocation["viewRadians"] = playerLocation["viewRadians"]
+                  break;
+                }
+              }
+
+              var playerKillData = {}
+              playerKillData["roundTime"] = roundTime
+              playerKillData["gameTime"] = gameTime
+              playerKillData["victim"] = victim
+              playerKillData["victimLocation"] = victimLocation
+              playerKillData["killerLocation"] = killerLocation
+              killBreakdown.push(playerKillData)
+
+            }
+            roundPlayerData["kills"] = killBreakdown
+
+            // economy breakdown
+            var economyBreakdown = {}
+            var economyData = playerData["economy"]
+
+            economyBreakdown["value"] = economyData["loadoutValue"]
+            economyBreakdown["remaining"] = economyData["remaining"]
+            economyBreakdown["spent"] = economyData["spent"]
+            economyBreakdown["weapon"] = economyData["weapon"]
+            economyBreakdown["armor"] = economyData["armor"]
+            roundPlayerData["economy"] = economyBreakdown
+
+            roundPlayerData["score"] = score;
+
+            roundDataFinal[subject].push(roundPlayerData)
           }
-          roundPlayerData["kills"] = killBreakdown
-
-          // economy breakdown
-          var economyBreakdown = {}
-          var economyData = playerData["economy"]
-
-          economyBreakdown["value"] = economyData["loadoutValue"]
-          economyBreakdown["remaining"] = economyData["remaining"]
-          economyBreakdown["spent"] = economyData["spent"]
-          economyBreakdown["weapon"] = economyData["weapon"]
-          economyBreakdown["armor"] = economyData["armor"]
-          roundPlayerData["economy"] = economyBreakdown
-
-          roundPlayerData["score"] = score;
-
-          roundDataFinal[subject].push(roundPlayerData)
         }
       }
 
@@ -1416,7 +1395,7 @@ bot.on('message', async function(msg) {
         },
         "options":chartOptions
       }
-      console.log("CHART: "+JSON.stringify(chartObject))
+      // console.log("CHART: "+JSON.stringify(chartObject))
       return chartObject
     }
 
@@ -1529,7 +1508,7 @@ bot.on('message', async function(msg) {
         },
         "options":chartOptions
       }
-      console.log("CHART: "+JSON.stringify(chartObject))
+      // console.log("CHART: "+JSON.stringify(chartObject))
       return chartObject
     }
 
@@ -1556,13 +1535,16 @@ bot.on('message', async function(msg) {
       // return "https://quickchart.io/chart?bkg=white&c="+encodeURIComponent(JSON.stringify(chartObject))
     }
 
-    function buildAsciiTable(title, tableHeaders, data, raw){
+    function buildAsciiTable(title, tableHeaders, data, raw, removeBorder){
       var table = new AsciiTable().fromJSON({
         title:title,
         heading: tableHeaders,
         rows: data
       })
 
+      if(removeBorder == true){
+        table.removeBorder()
+      }
       return raw == true ? table : "`"+table.toString()+"`"
     }
 
@@ -1835,7 +1817,7 @@ bot.on('message', async function(msg) {
       }
 
       function readAllMatches(){
-        var matches = compHistoryData[userId]["MatchSort"]
+        var matches = compHistoryData[userId]["MatchSort"].slice(0, 8) // restrict to 8 matches to keep 1024 char limit
         var roundStatsFiles = matches.map(function(matchId){
           return MATCHES_PROCESSED_PATH+matchId+"/users.json"
         })
@@ -1915,7 +1897,7 @@ bot.on('message', async function(msg) {
             var matchData = [agentName, kdaText, mvpText, scoreString, mapName]
             dataArray.push(matchData)
           })
-          var matchTable = buildAsciiTable("Match History", ["agent", "kda & score", "place & MVPs", "score", "map"], dataArray)
+          var matchTable = buildAsciiTable(null, ["agent", "kda & score", "place & MVPs", "score", "map"], dataArray)
           matchTableCompletion(matchTable)
         })
       }else{
@@ -2039,8 +2021,9 @@ bot.on('message', async function(msg) {
           var score = userObj["stats"]["score"]
           var scorePerRound = (score/roundsPlayed).toFixed(2)
 
-          var kdaTable = buildAsciiTable(null, ["Kills", "Deaths", "Assists", "K/D", "Total rounds played", "Total score", "Score/round", "Average kills per round"], [[kills+"", deaths+"", assists+"", kd+"", roundsPlayed, score, scorePerRound, killsPerRound+""]])
-          var scoreTable = ""
+          var kdaTable = buildAsciiTable(null, ["Kills", "Deaths", "Assists", "K/D", "Average kills per round"], [[kills+"", deaths+"", assists+"", kd+"", killsPerRound+""]])
+          var scoreTable = buildAsciiTable(null, ["Total rounds played", "Total score", "Score/round"], [[roundsPlayed, score, scorePerRound]])
+
 
           var hitsDataForUser = totalHitsStats[userId]
           var headshots = hitsDataForUser["headshots"]
@@ -2056,17 +2039,33 @@ bot.on('message', async function(msg) {
           var defuses = userObj["stats"]["defuses"]
           var firstBloods = userObj["stats"]["firstBloods"]
           var firstBloodRate = cleanHSPercent(firstBloods/roundsPlayed)+"%"
-          var miscTable = buildAsciiTable(null, ["Plants", "Defuses", "First bloods", "First blood % (over all rounds)", "Headshot %", "Bodyshot %", "Legshots %"], [[plants, defuses, firstBloods, firstBloodRate, headshotPercent, bodyshotPercent, legshotPercent]])
+          var miscTable = buildAsciiTable(null, ["Plants", "Defuses", "First bloods", "First blood % (over all rounds)"], [[plants, defuses, firstBloods, firstBloodRate]])
+          var hitsTable = buildAsciiTable(null, ["Headshot %", "Bodyshot %", "Legshots %"], [[headshotPercent, bodyshotPercent, legshotPercent]])
 
           var totalGamesPlayed = userObj["stats"]["totalGamesPlayed"];
 
           var msgText = disclaimer+"\nStats for **"+userFullName+"**\nPlay time: **"+totalPlaytimeHours+"** hours over "+totalGamesPlayed+" competitive games.\n"+kdaTable+"\n"+scoreTable+"\n"+miscTable+"\n"
 
-          var statMsg = await msg.channel.send(msgText)
+
+          const embed = new discord.MessageEmbed()
+                .setColor(userColor)
+                .addField(userFullName, "Episode 2 Act 1 Statistics")
+                .addField("Play Time", "**"+totalPlaytimeHours+"** hours over "+totalGamesPlayed+" competitive games.")
+                .addField("Damage Dealt Stats", kdaTable)
+                .addField("Score Stats", scoreTable)
+                .addField("Round Stats", miscTable)
+                .addField("Hit Stats", hitsTable)
+                // var statMsg = await msg.channel.send(msgText)
+
+          var statMsg = await msg.channel.send({embed})
+
+          // var statMsg = await msg.channel.send(msgText)
 
           matchHistoryTable(userId, function(table){
             msgText += "\n"+table
-            statMsg.edit(msgText)
+            embed.addField("Match History", table)
+            statMsg.edit(embed)
+            // statMsg.edit(msgText)
           })
 
           // console.log("PRinting Stats for "+obj.gameName+"#"+obj.tagLine)
