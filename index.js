@@ -14,29 +14,22 @@ const querystring = require('querystring');
 var dateFormat = require('dateformat');
 
 let rawUserColors = fs.readFileSync('private/userColors.json');
-let rawAuthData = fs.readFileSync('private/static/valAuths.json');
 let rawCacheData = fs.readFileSync('private/authCache.json');
 let rawContentData = fs.readFileSync('private/static/content.json');
 let rawMatchDownloads = fs.readFileSync('private/matchesDownloaded.json');
 let rawProcessedMatches = fs.readFileSync('private/processedMatches.json');
 // let rawCompHistory = fs.readFileSync('private/compHistory.json');
 let rawMatchHistory = fs.readFileSync('private/matchHistory.json');
-
-// let rawPlayerAliases = fs.readFileSync('private/playerAliases.json');
-
-// let discordTokenRaw = fs.readFileSync('secret.json');
+let rawSubjectIdAliases = fs.readFileSync('private/static/userIDs.json');
 
 let userColorsData = JSON.parse(rawUserColors);
-// let token = JSON.parse(discordTokenRaw)["key"];
-let authData = JSON.parse(rawAuthData);
 let authCacheData = JSON.parse(rawCacheData);
 let contentData = JSON.parse(rawContentData);
 let matchesDownloadedData = JSON.parse(rawMatchDownloads);
 let processedMatchesData = JSON.parse(rawProcessedMatches);
 // let compHistoryData = JSON.parse(rawCompHistory);
 let matchHistoryData = JSON.parse(rawMatchHistory);
-
-// let playerAliases = JSON.parse(rawPlayerAliases);
+let subjectIdAliases = JSON.parse(rawSubjectIdAliases);
 
 let rawUserStats = fs.readFileSync('private/totalStats/users.json');
 let rawHitsStats = fs.readFileSync('private/totalStats/hits.json');
@@ -521,10 +514,11 @@ bot.on('message', async function(msg) {
         var userFullName;
         if(userStats != undefined){
           userFullName = userStats["gameName"]+"#"+userStats["tagLine"]
-        }else{
-          // new user
-          userFullName = usernameArg
         }
+        // else{
+        //   // new user
+        //   userFullName = usernameArg
+        // }
 
         var currentEloAddOnText = ""
         if(latestElo % 100 == 0 && latestTier > 0){
@@ -2038,16 +2032,15 @@ bot.on('message', async function(msg) {
         msg.channel.send("You are not allowed to use this bot. 😊")
         return;
       }
-      let usernameRawArg = args[1]
-      if(usernameRawArg != undefined){
-        let usernameArg = usernameRawArg.toLowerCase()
-        let userData = authData["users"][usernameArg];
-        if(userData != undefined){
-          let username = userData["username"];
-          let password = userData["password"];
 
-          getUserAuth(username, password, async function(creds){
-            let userId = creds["userId"];
+      let alias = args[1]
+
+      if(alias != undefined){
+        let userId = subjectIdAliases[alias]
+        if(userId != undefined){
+          getUserAuth(process.env.USERNAME, process.env.PASSWORD, async function(creds){
+            // let userId = creds["userId"];
+
             let entitlementsToken = creds["entitlementsToken"];
             let accessToken = creds["accessToken"];
             let expiryTime = creds["expiry"];
@@ -2055,6 +2048,7 @@ bot.on('message', async function(msg) {
             if(arg == "elo"){
               displayUserElo(userId, usernameArg, accessToken, entitlementsToken)
             }else if(arg == "gam"){
+<<<<<<< Updated upstream
               // let allMatchMsg = await msg.channel.send("Downloading all raw match data for "+usernameArg)
               // numCompleted[userId] = 0;
               //
@@ -2065,13 +2059,16 @@ bot.on('message', async function(msg) {
               // batchDownloadMatchData(userId, accessToken, entitlementsToken, 0, 20, allMatchMsg)
             }else if(arg == "uocm"){ // update old comp matches
               // batchSaveMatchHistory(userId, accessToken, entitlementsToken)
+=======
+              downloadMatchHistory(accessToken, entitlementsToken, competitiveupdatesEndpointResult)
+>>>>>>> Stashed changes
             }
           });
         }else{
-          msg.channel.send("Username not found")
+          msg.channel.send("Alias has not beed added yet. Use ?add")
         }
       }else{
-        msg.channel.send("Please enter a username: ?elo <username>")
+        msg.channel.send("Please enter an alias: ?elo <alias>")
       }
     }
 
@@ -2247,26 +2244,17 @@ bot.on('message', async function(msg) {
         pageNum = 1
       }
 
-      let usernameRawArg = USERNAME_FOR_LEADERBOARD
-      if(usernameRawArg != undefined){
-        let usernameArg = usernameRawArg.toLowerCase()
-        let userData = authData["users"][usernameArg];
-        if(userData != undefined){
-          let username = userData["username"];
-          let password = userData["password"];
+      getUserAuth(process.env.USERNAME, process.env.PASSWORD, async function(creds){
+        let userId = creds["userId"];
+        let entitlementsToken = creds["entitlementsToken"];
+        let accessToken = creds["accessToken"];
+        let expiryTime = creds["expiry"];
 
-          getUserAuth(username, password, async function(creds){
-            let userId = creds["userId"];
-            let entitlementsToken = creds["entitlementsToken"];
-            let accessToken = creds["accessToken"];
-            let expiryTime = creds["expiry"];
+        var globalLeaderboard = getGlobalLeaderboard(pageNum-1, accessToken, entitlementsToken, function(table){
+          msg.channel.send(table)
+        })
+      })
 
-            var globalLeaderboard = getGlobalLeaderboard(pageNum-1, accessToken, entitlementsToken, function(table){
-              msg.channel.send(table)
-            })
-          })
-        }
-      }
     }
 
     if(arg == "damage" || arg == "score" || arg == "carry"){// || arg == "analyze"){
@@ -2295,6 +2283,51 @@ bot.on('message', async function(msg) {
         msg.channel.send("Color set.")
       }else{
         msg.channel.send("Not a valid color")
+      }
+    }
+
+    // ?add <GameName#TagLine> <alias>
+    if(arg == "add"){
+      let gameNameArg = args[1]
+      if(gameNameArg != undefined && args.length >= 3){
+        let gameNameSplit = gameNameArg.split("#")
+        let gameName = gameNameSplit[0].toLowerCase()
+        let tagLine = gameNameSplit[1].toLowerCase()
+        var obj;
+        Object.keys(totalUserStats).forEach(x => obj = (totalUserStats[x].gameName.toLowerCase() === gameName && totalUserStats[x].tagLine.toLowerCase() === tagLine) ? {"id":x}: obj);
+        if(obj != undefined){
+          var subjectId = obj["id"]
+          let alias = args[2]
+          if(alias != undefined){
+            if(subjectIdAliases[alias] != undefined){
+              msg.channel.send("This alias already exists. @ me if you want to delete/change it.")
+            }else{
+              subjectIdAliases[alias] = subjectId
+              fs.writeFileSync('private/static/userIDs.json', JSON.stringify(subjectIdAliases, null, 2) , 'utf-8');
+
+              msg.channel.send("User added successfully. Code: "+subjectId.split("-")[0])
+            }
+          }
+        }else{
+          msg.channel.send("Could not find user ID. You must play a game with any existing user first.")
+        }
+      }else{
+        msg.channel.send("The proper usage is ?add <InGameName#TagLine> <alias>")
+      }
+    }
+
+    if(arg == "who"){
+      let alias = args[1]
+      if(alias != undefined){
+        var userId = subjectIdAliases[alias]
+        if(userId != undefined){
+          var userStats = totalUserStats[userId];
+          var userFullName;
+          if(userStats != undefined){
+            userFullName = userStats["gameName"]+"#"+userStats["tagLine"]
+          }
+          msg.channel.send("The alias **"+alias+"** is assigned to the game account **"+userFullName+"**")
+        }
       }
     }
 
