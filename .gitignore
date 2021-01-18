@@ -1,5 +1,5 @@
 node_modules/
 secret.json
-password.env
+.env
 private/
 matches/

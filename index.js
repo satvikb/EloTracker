@@ -1,4 +1,5 @@
 const discord = require('discord.js');
+require('dotenv').config();
 const bot = new discord.Client();
 const fs = require('fs');
 const path = require('path');
@@ -23,10 +24,10 @@ let rawMatchHistory = fs.readFileSync('private/matchHistory.json');
 
 // let rawPlayerAliases = fs.readFileSync('private/playerAliases.json');
 
-let discordTokenRaw = fs.readFileSync('secret.json');
+// let discordTokenRaw = fs.readFileSync('secret.json');
 
 let userColorsData = JSON.parse(rawUserColors);
-let token = JSON.parse(discordTokenRaw)["key"];
+// let token = JSON.parse(discordTokenRaw)["key"];
 let authData = JSON.parse(rawAuthData);
 let authCacheData = JSON.parse(rawCacheData);
 let contentData = JSON.parse(rawContentData);
@@ -328,18 +329,18 @@ bot.on('message', async function(msg) {
       Promise.all(matchDetailsPromises).then((allMatchData) => {
         for(var i = 0; i < allMatchData.length; i++){
           var matchData = JSON.parse(allMatchData[i])
-          // console.log("DDDD "+JSON.stringify(matchData))
           var matchID = matchData["matchInfo"]["matchId"]
           var queueID = matchData["matchInfo"]["queueID"]
 
           var rawPath = rawMatchPath(matchID)
           fs.writeFileSync(rawPath, JSON.stringify(matchData, null, 2), 'utf8');
           matchesDownloadedData[subject][matchID] = 1
+          // console.log("Promise for download "+matchID)
 
           matchHistoryData[subject]["Matches"][matchID] = matchInfoDict[matchID]
 
           processMatchData(matchID, matchData, function(){
-            bot.channels.cache.get("798343660001165332").send("Processed match "+matchId+" for user "+subject);
+            bot.channels.cache.get("798343660001165332").send("Processed and downloaded match "+matchID+" for user "+subject);
           }, false)
         }
         doAllComputation()
@@ -2327,4 +2328,4 @@ bot.on('message', async function(msg) {
     }
 });
 
-bot.login(token);
+bot.login(process.env.DISCORD_KEY);
