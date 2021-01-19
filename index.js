@@ -1071,59 +1071,61 @@ bot.on('message', async function(msg) {
       if(matchHistoryData[userId] != undefined){
         readAllMatches().then(function(files){
           // var headers = ["agent", "kda & score", "place & MVPs", "map"]
-          var dataArray = []
-          files.forEach(function(fileData){
-            var gameUserInfo = JSON.parse(fileData)
-            var matchId = gameUserInfo["gameInfo"]["matchId"]
-            var userInfo = gameUserInfo["users"][userId]
-            var userTeam = userInfo["teamId"]
-            var gameMatchMVP = gameUserInfo["gameInfo"]["matchMVP"]
-            var gameTeamMVP = gameUserInfo["gameInfo"]["teamMVP"]
-            var mapId = gameUserInfo["gameInfo"]["mapId"]
-            var allScores = gameUserInfo["gameInfo"]["scores"]
+          if(files.length > 0){
+            var dataArray = []
+            files.forEach(function(fileData){
+              var gameUserInfo = JSON.parse(fileData)
+              var matchId = gameUserInfo["gameInfo"]["matchId"]
+              var userInfo = gameUserInfo["users"][userId]
+              var userTeam = userInfo["teamId"]
+              var gameMatchMVP = gameUserInfo["gameInfo"]["matchMVP"]
+              var gameTeamMVP = gameUserInfo["gameInfo"]["teamMVP"]
+              var mapId = gameUserInfo["gameInfo"]["mapId"]
+              var allScores = gameUserInfo["gameInfo"]["scores"]
 
-            var redScore = gameUserInfo["gameInfo"]["redScore"]
-            var blueScore = gameUserInfo["gameInfo"]["blueScore"]
+              var redScore = gameUserInfo["gameInfo"]["redScore"]
+              var blueScore = gameUserInfo["gameInfo"]["blueScore"]
 
-            var ourScore = userTeam == "Blue" ? blueScore : redScore
-            var enemyScore = userTeam == "Blue" ? redScore : blueScore
-            var gameResult = ourScore > enemyScore ? "WIN" : (ourScore == enemyScore ? "Draw" : "LOSE")
-            var scoreString = gameResult + " ("+ourScore+"-"+enemyScore+")"
+              var ourScore = userTeam == "Blue" ? blueScore : redScore
+              var enemyScore = userTeam == "Blue" ? redScore : blueScore
+              var gameResult = ourScore > enemyScore ? "WIN" : (ourScore == enemyScore ? "Draw" : "LOSE")
+              var scoreString = gameResult + " ("+ourScore+"-"+enemyScore+")"
 
-            var mapName = getContentNameFromId("Maps", "AssetPath", mapId)
+              var mapName = getContentNameFromId("Maps", "AssetPath", mapId)
 
-            // console.log("Match "+gameUserInfo["gameInfo"]["blueScore"]+"-"+gameUserInfo["gameInfo"]["redScore"])
+              // console.log("Match "+gameUserInfo["gameInfo"]["blueScore"]+"-"+gameUserInfo["gameInfo"]["redScore"])
 
-            var agentId = userInfo["characterId"]
-            var agentName = getContentNameFromId("Characters", "ID", agentId)
+              var agentId = userInfo["characterId"]
+              var agentName = getContentNameFromId("Characters", "ID", agentId)
 
-            var score = userInfo["stats"]["score"]
-            var leaderboardPlace = 0;
-            for(var i = 0; i < allScores.length; i++){
-              if(allScores[i] == score){
-                leaderboardPlace = i+1
+              var score = userInfo["stats"]["score"]
+              var leaderboardPlace = 0;
+              for(var i = 0; i < allScores.length; i++){
+                if(allScores[i] == score){
+                  leaderboardPlace = i+1
+                }
               }
-            }
 
-            var kills = userInfo["stats"]["kills"]
-            var deaths = userInfo["stats"]["deaths"]
-            var assists = userInfo["stats"]["assists"]
+              var kills = userInfo["stats"]["kills"]
+              var deaths = userInfo["stats"]["deaths"]
+              var assists = userInfo["stats"]["assists"]
 
-            var mvpText = gameMatchMVP == userId ? "Match MVP " : (gameTeamMVP == userId ? "Team MVP " : "")
-            var placeText = leaderboardPlace == 1 ? "1st" : (leaderboardPlace == 2 ? "2nd" : (leaderboardPlace == 3 ? "3rd" : leaderboardPlace+"th"))
-            if(mvpText != ""){
-              mvpText += "("+placeText+")"
-            }else{
-              mvpText += placeText
-            }
+              var mvpText = gameMatchMVP == userId ? "Match MVP " : (gameTeamMVP == userId ? "Team MVP " : "")
+              var placeText = leaderboardPlace == 1 ? "1st" : (leaderboardPlace == 2 ? "2nd" : (leaderboardPlace == 3 ? "3rd" : leaderboardPlace+"th"))
+              if(mvpText != ""){
+                mvpText += "("+placeText+")"
+              }else{
+                mvpText += placeText
+              }
 
-            var kdaText = kills+"/"+deaths+"/"+assists+" ("+score+")"
+              var kdaText = kills+"/"+deaths+"/"+assists+" ("+score+")"
 
-            var matchData = [agentName, kdaText, mvpText, scoreString, mapName]
-            dataArray.push(matchData)
-          })
-          var matchTable = buildAsciiTable(null, ["agent", "kda & score", "place & MVPs", "score", "map"], dataArray)
-          matchTableCompletion(matchTable)
+              var matchData = [agentName, kdaText, mvpText, scoreString, mapName]
+              dataArray.push(matchData)
+            })
+            var matchTable = buildAsciiTable(null, ["agent", "kda & score", "place & MVPs", "score", "map"], dataArray)
+            matchTableCompletion(matchTable)
+          }
         })
       }else{
 
@@ -1207,6 +1209,10 @@ bot.on('message', async function(msg) {
     if(arg == "computeall"){
       doAllComputation()
       msg.channel.send("All stats have been computed.")
+    }
+
+    if(arg == "pag"){
+      processAllMatchData()
     }
 
     if(arg == "stats"){
@@ -1373,12 +1379,10 @@ bot.on('message', async function(msg) {
           if (!element) return;
           return arguments.push(element.replace(/"/g, ''));
       });
-      console.log("ARGS "+arguments)
 
       let gameNameArg = arguments[1]
       if(gameNameArg != undefined && arguments.length >= 3){
         let gameNameSplit = gameNameArg.split("#")
-        console.log("game "+JSON.stringify(gameNameArg))
         if(gameNameSplit.length == 2){
           let gameName = gameNameSplit[0].toLowerCase()
           let tagLine = gameNameSplit[1].toLowerCase()
@@ -1757,6 +1761,25 @@ function processMatchData(matchID, matchData, didProcess, forceProcess){
      // bad game
      console.log("ERROR "+err+"_");//+JSON.stringify(matchDataRaw))
   }
+}
+
+function processAllMatchData(){
+  fs.readdir(MATCHES_RAW_PATH, function(err, filenames) {
+    if (err) {
+      onError(err);
+      return;
+    }
+    filenames.forEach(function(filename) {
+      try{
+        let matchID = filename.split(".")[0]
+        let rawMatchData = fs.readFileSync(MATCHES_RAW_PATH + filename);
+        let matchData = JSON.parse(rawMatchData)
+        processMatchData(matchID, matchData, function(){}, true)
+      }catch{
+
+      }
+    })
+  })
 }
 
 function processMatchUserAnalysis(folderPath, matchData){
@@ -2172,7 +2195,7 @@ function doAllComputation(){
   bot.channels.cache.get("798343660001165332").send("Computed all stats.");
 }
 
-cron.schedule('53 * * * *', () => {
+cron.schedule('55 * * * *', () => {
   console.log('running a task every hour');
   getUserAuth(process.env.VAL_USERNAME, process.env.PASSWORD, async function(creds){
     let entitlementsToken = creds["entitlementsToken"];
