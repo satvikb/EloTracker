@@ -13,6 +13,8 @@ const requestPromise = require('request-promise');
 const querystring = require('querystring');
 var dateFormat = require('dateformat');
 
+var cron = require('node-cron');
+
 let rawUserColors = fs.readFileSync('private/userColors.json');
 let rawCacheData = fs.readFileSync('private/authCache.json');
 let rawContentData = fs.readFileSync('private/static/content.json');
@@ -110,7 +112,8 @@ bot.on('ready', function() {
 });
 
 bot.on('message', async function(msg) {
-    let args = msg.content.substring(PREFIX.length).split(" "); //returns the text after the prefix smart move by me nc
+    let argString = msg.content.substring(PREFIX.length)
+    let args = argString.split(" "); //returns the text after the prefix smart move by me nc
     var arg = ((args[0].toString()).toLowerCase());
 
     var userCanUseBot = true;
@@ -126,263 +129,14 @@ bot.on('message', async function(msg) {
         bot.login(token);
     }
 
-    function getUserAuth(username, password, completion){
-      var userAuthCache = authCacheData[username]
-      var expired = true;
-      if(userAuthCache != undefined){
-        var expireDate = userAuthCache["expiry"]
-        var d = new Date();
-        var seconds = Math.round(d.getTime() / 1000);
-        if(seconds > expireDate){
-          expired = true
-        }else{
-          expired = false
-        }
-      }
 
-      if(userAuthCache != undefined && expired == false){
-        console.log("Using cache")
-        completion(userAuthCache)
-      }else{
-        // not found, get it
-
-        var cookieJar = request.jar();
-        var initialAuthOpts = {
-          uri: 'https://auth.riotgames.com/api/v1/authorization',
-          method: 'POST',
-          json: {
-            'client_id': 'play-valorant-web-prod',
-            'nonce': '1',
-            'redirect_uri': 'https://playvalorant.com/opt_in',
-            'response_type': 'token id_token'
-          },
-          jar: cookieJar
-        }
-
-        request(initialAuthOpts, function(err, res, body) {
-
-          initialAuthOpts.json = {
-            'type': 'auth',
-            'username': username,
-            'password': password
-          }
-          initialAuthOpts.method = "PUT"
-          request(initialAuthOpts, function(err1, res, body1) {
-            if(body1["error"] != undefined){
-              msg.channel.send("Bad username/password. Contact account owner.\nThe API might also be down.")
-            }else{
-              let returnData = body1["response"]["parameters"]["uri"]
-              let rDS = returnData.split('#')[1];
-              let params = querystring.parse(rDS)
-
-              let accessToken = params["access_token"];
-              let expireTime = params["expires_in"]; // TODO add to current time and store
-
-              const entitlementsTokenOptions = {
-                  url: "https://entitlements.auth.riotgames.com/api/token/v1",
-                  method: 'POST',
-                  headers: {
-                      'Authorization': 'Bearer '+accessToken,
-                      "Content-Type": "application/json"
-                  },
-                  json:{},
-                  jar: cookieJar
-              };
-              request(entitlementsTokenOptions, function(err, res, body2) {
-                var entitlementsToken = body2["entitlements_token"]
-
-                const userInfoData = {
-                    url: "https://auth.riotgames.com/userinfo",
-                    method: 'POST',
-                    headers: {
-                        'Authorization': 'Bearer '+accessToken,
-                        "Content-Type": "application/json"
-                    },
-                    json:{},
-                    jar: cookieJar
-                };
-                request(userInfoData, function(err, res, body3) {
-                  var userId = body3["sub"];
-                  var d = new Date();
-                  var seconds = Math.round(d.getTime() / 1000);
-                  var finalExpireTime = parseInt(expireTime) + seconds;
-                  var creds = {
-                    "userId":userId,
-                    "entitlementsToken":entitlementsToken,
-                    "accessToken":accessToken,
-                    "expiry":finalExpireTime
-                  }
-                  authCacheData[username] = creds;
-                  fs.writeFileSync('private/authCache.json', JSON.stringify(authCacheData, null, 2) , 'utf-8');
-                  completion(creds)
-                });
-              });
-            }
-          });
-        });
-      }
-    }
-
-    // function saveCompHistory(userId, matches){
-    //   var totalSaved = 0;
-    //   if(compHistoryData[userId] == undefined){
-    //     compHistoryData[userId] = {}
-    //   }
-    //   if(compHistoryData[userId]["Matches"] == undefined){
-    //     compHistoryData[userId]["Matches"] = {}
-    //   }
-    //
-    //   for(var i = 0; i < matches.length; i++){
-    //     var match = matches[i]
-    //     var matchId = match["MatchID"]
-    //     var tierAfter = match["TierAfterUpdate"]
-    //     var matchStartTime = match["MatchStartTime"]
-    //
-    //     if(matchStartTime > 1610442000000){
-    //       if(tierAfter > 0){ // only store actual comp games
-    //         compHistoryData[userId]["Matches"][matchId] = match
-    //         totalSaved += 1
-    //       }else if(tierAfter == 0){
-    //
-    //       }
-    //     }
-    //   }
-    //
-    //   var compItems = Object.keys(compHistoryData[userId]["Matches"]).map(function(key) {
-    //     return [key, compHistoryData[userId]["Matches"][key]];
-    //   });
-    //
-    //   // Sort the array based on the second element
-    //   compItems.sort(function(firstObj, secondObj) {
-    //     var firstMatch = firstObj[1]
-    //     var secondMatch = secondObj[1]
-    //
-    //     return secondMatch["MatchStartTime"] - firstMatch["MatchStartTime"]
-    //   })
-    //
-    //   var matchSortArray = []
-    //   for(var i = 0; i < compItems.length; i++){
-    //     var match = compItems[i][1]
-    //     var matchId = match["MatchID"]
-    //     matchSortArray.push(matchId)
-    //   }
-    //
-    //   compHistoryData[userId]["MatchSort"] = matchSortArray
-    //
-    //   fs.writeFileSync('private/compHistory.json', JSON.stringify(compHistoryData, null, 2), 'utf-8');
-    //   return totalSaved
-    // }
 
     function calcElo(tierAfter, rpAfter){
       return (tierAfter*100) - 300 + rpAfter;
     }
 
-    function downloadMatchHistory(accessToken, entitlementsToken, competitiveupdatesEndpointResult){
-
-      // this will download the matches that havent already been downloaded, and add it to
-      var subject = competitiveupdatesEndpointResult["Subject"]
-      var matchInfoData = competitiveupdatesEndpointResult["Matches"]
-
-      var matchInfoDict = {}
-      for(var i = 0; i < matchInfoData.length; i++){
-        matchInfoDict[matchInfoData[i]["MatchID"]] = matchInfoData[i]
-      }
-
-
-      if(matchesDownloadedData[subject] == undefined){
-        matchesDownloadedData[subject] = {}
-      }
-
-      if(matchHistoryData[subject] == undefined){
-        matchHistoryData[subject] = {
-          "Matches":{},
-          "MatchSort":[]
-        }
-      }
-
-      var matchDetailsPromises = matchInfoData.reduce(function (res, matchInfo) {
-        var matchId = matchInfo["MatchID"]
-        var matchStart = matchInfo["MatchStartTime"]
-        if(matchesDownloadedData[subject][matchId] == undefined && matchStart > 1610442000000){
-          const options = {
-              url: 'https://pd.na.a.pvp.net/match-details/v1/matches/'+matchId,
-              method: 'GET',
-              headers: {
-                  "Content-Type": "application/json",
-                  'Authorization': 'Bearer '+accessToken,
-                  'X-Riot-Entitlements-JWT': entitlementsToken
-              },
-          };
-          var req = requestPromise(options)
-          res.push(req);
-        }
-        return res;
-      }, []);
-
-      Promise.all(matchDetailsPromises).then((allMatchData) => {
-        for(var i = 0; i < allMatchData.length; i++){
-          var matchData = JSON.parse(allMatchData[i])
-          var matchID = matchData["matchInfo"]["matchId"]
-          var queueID = matchData["matchInfo"]["queueID"]
-
-          var rawPath = rawMatchPath(matchID)
-          fs.writeFileSync(rawPath, JSON.stringify(matchData, null, 2), 'utf8');
-          matchesDownloadedData[subject][matchID] = 1
-          // console.log("Promise for download "+matchID)
-
-          matchHistoryData[subject]["Matches"][matchID] = matchInfoDict[matchID]
-
-          processMatchData(matchID, matchData, function(){
-            bot.channels.cache.get("798343660001165332").send("Processed and downloaded match "+matchID+" for user "+subject);
-          }, false)
-        }
-        doAllComputation()
-
-
-        var matchItems = Object.keys(matchHistoryData[subject]["Matches"]).map(function(key) {
-          return [key, matchHistoryData[subject]["Matches"][key]];
-        });
-
-        // Sort the array based on the second element
-        matchItems.sort(function(firstObj, secondObj) {
-          var firstMatch = firstObj[1]
-          var secondMatch = secondObj[1]
-
-          return secondMatch["MatchStartTime"] - firstMatch["MatchStartTime"]
-        })
-
-        var matchSortArray = []
-        for(var i = 0; i < matchItems.length; i++){
-          var match = matchItems[i][1]
-          var matchId = match["MatchID"]
-          matchSortArray.push(matchId)
-        }
-
-        matchHistoryData[subject]["MatchSort"] = matchSortArray
-
-
-
-        fs.writeFileSync('private/matchHistory.json', JSON.stringify(matchHistoryData, null, 2), 'utf-8');
-        fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2), 'utf-8');
-
-      });
-    }
-
-    function displayUserElo(userId, usernameArg, accessToken, entitlementsToken){
-      const options = {
-          url: 'https://pd.na.a.pvp.net/mmr/v1/players/'+userId+"/competitiveupdates",
-          method: 'GET',
-          headers: {
-              "Content-Type": "application/json",
-              'Authorization': 'Bearer '+accessToken,
-              'X-Riot-Entitlements-JWT': entitlementsToken
-          },
-      };
-
-      request(options, async function(err, res, body) {
-        let json = JSON.parse(body);
-
-        downloadMatchHistory(accessToken, entitlementsToken, json)
+    function displayUserElo(userId, accessToken, entitlementsToken){
+      updateUserElo(userId, accessToken, entitlementsToken, true, async function(json){
         let matchData = json["Matches"]
         matchData.sort((a, b) => (a["MatchStartTime"] > b["MatchStartTime"]) ? -1 : 1)
 
@@ -392,7 +146,14 @@ bot.on('message', async function(msg) {
           numToShow = parseInt(count);
         }
         // var matchSortArray = compHistoryData[userId]["MatchSort"]
-        var numOfMatchesAvailable = matchData.length
+        var numOfCompMatchesAvailable = 0
+        for(var i = 0; i < matchData.length; i++){
+          var m = matchData[i]
+          var t = m["TierAfterUpdate"]
+          if(t > 0){
+            numOfCompMatchesAvailable += 1
+          }
+        }
         // var processedData = []
 
         var latestRank = ""
@@ -411,10 +172,11 @@ bot.on('message', async function(msg) {
           }
         }
 
-        var numMatchesToShow = Math.min(numToShow, numOfMatchesAvailable)
+        var numMatchesToShow = Math.min(numToShow, numOfCompMatchesAvailable)
+        var compGamesShowed = 0
 
         var embedFieldArray = []
-        for(var i = 0; i < numMatchesToShow; i++){
+        for(var i = 0; i < matchData.length; i++){
           let latestMatchJson = matchData[i]//compHistoryData[userId]["Matches"][matchSortArray[i]]//matchData[i]
           if(latestMatchJson != undefined){
             let RPBefore = latestMatchJson["RankedRatingBeforeUpdate"];
@@ -425,9 +187,7 @@ bot.on('message', async function(msg) {
             let matchID = latestMatchJson["MatchID"]
             let competitiveMovement = latestMatchJson["CompetitiveMovement"]
 
-            if(tierAfter > 0){
-
-
+            if(tierAfter > 0 && compGamesShowed < numMatchesToShow){
               let eloChange;
               var eloSign = "+"
               if(tierBefore != tierAfter){
@@ -454,7 +214,7 @@ bot.on('message', async function(msg) {
               let rankName = RANKS[tierAfter];
               var currentElo = calcElo(tierAfter, RPAfter)
 
-              if(i == 0){
+              if(compGamesShowed == 0){
                 latestRank = rankName
                 latestElo = currentElo
                 latestTier = tierAfter
@@ -505,8 +265,9 @@ bot.on('message', async function(msg) {
               var embedFieldObject = {name:compMovementEmoji+"**"+eloSign+eloChange+extraElo, value:fieldDay+endString, inline: debugMode ? false : true}
               embedFieldArray.push(embedFieldObject)
 
+              compGamesShowed += 1
             }else{
-              numMatchesToShow += 1
+              // numMatchesToShow += 1
             }
           }
         }
@@ -541,7 +302,7 @@ bot.on('message', async function(msg) {
               .setThumbnail('attachment://rank.png');
 
         if(numMatchesToShow > 0){
-          embed.addField('Competitive history for the last '+numMatchesToShow+" matches:", "⠀", false)
+          embed.addField('Competitive history for the last '+compGamesShowed+" matches:", "⠀", false)
           .addFields(embedFieldArray)
         }
 
@@ -564,551 +325,6 @@ bot.on('message', async function(msg) {
           msg.channel.send("Access Token: `"+accessToken+"`\n\nEntitlement: `"+entitlementsToken+"`\n\nUser ID: "+userId)
         }
       });
-    }
-
-    // function ensureGameIsDownloaded(userId, matchId, accessToken, entitlementsToken){
-    //   handleMatchDownloading(userId, matchId, accessToken, entitlementsToken, function(){
-    //     processMatchData(matchId, rawMatchPath(matchId), function(){
-    //       bot.channels.cache.get("798343660001165332").send("Processed match "+matchId+" for user "+userId);
-    //       doAllComputation()
-    //     }, false)
-    //     // fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
-    //   }, function(){
-    //     fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
-    //   }, function(err){
-    //     bot.channels.cache.get("798343660001165332").send("Error ensuring game is downloaded "+err);
-    //   })
-    // }
-
-    function downloadMatchData(accessToken, entitlementsToken, matchID, downloadCompletion){
-      const options = {
-          url: 'https://pd.na.a.pvp.net/match-details/v1/matches/'+matchID,
-          method: 'GET',
-          headers: {
-              "Content-Type": "application/json",
-              'Authorization': 'Bearer '+accessToken,
-              'X-Riot-Entitlements-JWT': entitlementsToken
-          },
-      };
-      request(options, function(err, res, body) {
-        fs.writeFile(rawMatchPath(matchID), body, 'utf8', function (err) {
-            if (err) {
-              console.log(err);
-            }else{
-              downloadCompletion(matchID, JSON.parse(body))
-            }
-        });
-      });
-    }
-
-    function rawMatchPath(matchID){
-      return MATCHES_RAW_PATH+matchID+'.json'
-    }
-
-    // var numCompleted = {}
-    // async function handleMatchDownloading(userId, matchID, accessToken, entitlementsToken, matchDoneHandler, downloadCompletion, errComp){
-    //   try {
-    //     var matchPath = rawMatchPath(matchID);
-    //     var matchExists = fs.existsSync(matchPath)
-    //     // console.log("Mathc "+matchPath+" "+matchExists +" "+numCompleted[userId])
-    //
-    //     if(matchesDownloadedData[userId] == undefined){
-    //       matchesDownloadedData[userId] = {}
-    //     }
-    //     if (!matchExists) {
-    //       downloadMatchData(accessToken, entitlementsToken, matchID, function(matchID_, matchData){
-    //         matchesDownloadedData[userId][matchID_] = 1;
-    //         downloadCompletion()
-    //
-    //         let matchDate = matchData["matchInfo"]["gameStartMillis"]
-    //         var d = new Date(matchDate)
-    //         var matchDayStr = dateFormat(d, "m/d h:MMtt");
-    //
-    //         bot.channels.cache.get("798343660001165332").send("Downloaded match "+matchID_+" ("+matchDayStr+") for user "+userId);
-    //       });
-    //       await sleep(2000); // rate limiting
-    //     }else{
-    //       // await sleep(100)
-    //       matchesDownloadedData[userId][matchID] = 1;
-    //       // console.log("already downloaded "+matchID)
-    //     }
-    //     matchDoneHandler()
-    //
-    //   } catch(err) {
-    //     errComp(err)
-    //   }
-    // }
-
-    // function batchSaveMatchHistory(userId, accessToken, entitlementsToken){
-    //   var totalSaved = 0;
-    //   async function downloadMatchHistory(matchTotal, startIndex, endIndex){
-    //     if(endIndex > matchTotal){
-    //       endIndex = matchTotal
-    //     }
-    //     const matchCompHistoryOptions = {
-    //         url: 'https://pd.na.a.pvp.net/mmr/v1/players/'+userId+"/competitiveupdates?startIndex="+startIndex+"&endIndex="+endIndex,
-    //         method: 'GET',
-    //         headers: {
-    //             "Content-Type": "application/json",
-    //             'Authorization': 'Bearer '+accessToken,
-    //             'X-Riot-Entitlements-JWT': entitlementsToken
-    //         },
-    //     };
-    //     request(matchCompHistoryOptions, async function(err, res, body) {
-    //       let compHistoryData = JSON.parse(body);
-    //       let matches = compHistoryData["Matches"]
-    //       if(matches != undefined){
-    //         // console.log(JSON.stringify(matches))
-    //         totalSaved += saveCompHistory(userId, matches)
-    //         console.log("Got Comp history till "+endIndex)
-    //
-    //         if(endIndex != matchTotal){
-    //           downloadCompHistory(matchTotal, startIndex+20, endIndex+20)
-    //           await sleep(1000)
-    //         }else{
-    //           msg.channel.send("Got rank data for "+totalSaved+" competitive games")
-    //         }
-    //       }else{
-    //         msg.channel.send("Got rank data for "+totalSaved+" competitive games")
-    //       }
-    //     })
-    //   }
-    //
-    //   const matchHistoryOptions = {
-    //       url: 'https://pd.na.a.pvp.net/match-history/v1/history/'+userId+"?startIndex=0&endIndex=2",
-    //       method: 'GET',
-    //       headers: {
-    //           "Content-Type": "application/json",
-    //           'Authorization': 'Bearer '+accessToken,
-    //           'X-Riot-Entitlements-JWT': entitlementsToken
-    //       },
-    //   };
-    //   request(matchHistoryOptions, async function(err, res, body) {
-    //     let historyData = JSON.parse(body);
-    //     let total = historyData["Total"]
-    //     console.log("Downloading comp history with total "+total)
-    //     downloadCompHistory(total, 0, 20)
-    //   })
-    // }
-
-    // function batchDownloadMatchData(userId, accessToken, entitlementsToken, startIndex, endIndex, allMatchMsg){
-    //   // keep getting match data until EndIndex == Total
-    //   const matchHistoryOptions = {
-    //       url: 'https://pd.na.a.pvp.net/match-history/v1/history/'+userId+"?startIndex="+startIndex+"&endIndex="+endIndex,
-    //       method: 'GET',
-    //       headers: {
-    //           "Content-Type": "application/json",
-    //           'Authorization': 'Bearer '+accessToken,
-    //           'X-Riot-Entitlements-JWT': entitlementsToken
-    //       },
-    //   };
-    //   request(matchHistoryOptions, async function(err, res, body) {
-    //     let historyData = JSON.parse(body);
-    //     let total = historyData["Total"]
-    //     if(historyData["EndIndex"] == total){
-    //       // finish
-    //     }else{
-    //       // download next batch
-    //       batchDownloadMatchData(userId, accessToken, entitlementsToken, startIndex+20, endIndex+20, allMatchMsg)
-    //     }
-    //
-    //     bot.channels.cache.get("798343660001165332").send("Batch downloading for user "+userId+" from "+startIndex+" to "+endIndex);
-    //
-    //     let histories = historyData["History"];
-    //
-    //     for(var i = 0; i < histories.length; i++){
-    //       let matchID = histories[i]["MatchID"]
-    //
-    //       handleMatchDownloading(userId, matchID, accessToken, entitlementsToken, function(){
-    //         numCompleted[userId] += 1;
-    //
-    //         if(numCompleted[userId] == parseInt(total)-1){
-    //           fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
-    //           allMatchMsg.edit("Done downloading match data. "+(numCompleted[userId]+1)+" / "+total+" matches stored.")
-    //         }
-    //       }, function(){
-    //         if(numCompleted[userId] == parseInt(total)-1){
-    //           fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2) , 'utf-8');
-    //           allMatchMsg.edit("Done downloading match data. "+(numCompleted[userId]+1)+" / "+total+" matches stored.")
-    //         }else{
-    //           allMatchMsg.edit("Downloading match data. "+numCompleted[userId]+" / "+total+" matches downloaded.")
-    //         }
-    //       }, function(err){
-    //         allMatchMsg.edit("ERROR CHECKING FILE EXISTS "+err)
-    //       })
-    //
-    //       // download match every 2 seconds
-    //     }
-    //   });
-    // }
-
-    // async function processAllUnprocessedGames(forceProcess){
-    //   // loop through raw files
-    //   const dir = await fs.promises.opendir(MATCHES_RAW_PATH)
-    //   var gamesToProcess = 0
-    //   for await (const dirent of dir) {
-    //     // console.log(dirent.name)
-    //     let matchFileName = dirent.name
-    //     let matchID = matchFileName.split(".")[0]
-    //     if(processedMatchesData[matchID] == undefined || forceProcess){
-    //       processMatchData(matchID, rawMatchPath(matchID), function(){
-    //         console.log("Processed "+matchID)
-    //         gamesToProcess += 1
-    //       }, forceProcess)
-    //     }
-    //   }
-    //   if(gamesToProcess > 0){
-    //     msg.channel.send("Processed "+gamesToProcess+" competitive games.")
-    //   }
-    // }
-
-    function processMatchData(matchID, matchData, didProcess, forceProcess){
-      if(processedMatchesData[matchID] == undefined){
-        processedMatchesData[matchID] = {}
-      }
-
-      try{
-        // TODO for now only process competitive games.
-        let matchStartTime = matchData["matchInfo"]["gameStartMillis"]
-        if(matchData["matchInfo"]["queueID"] == "competitive"){
-          let folderPath = MATCHES_PROCESSED_PATH+matchID
-          // console.log(folderPath)
-          if (!fs.existsSync(folderPath)){
-            console.log("Making folder "+folderPath)
-            fs.mkdirSync(folderPath);
-          }
-
-          processedMatchesData[matchID]["gameStartMillis"] = matchStartTime
-          var didProcessMatch = false;
-          if(processedMatchesData[matchID][PROCESSING_HIT_ANALYSIS] == undefined || forceProcess){
-            processMatchHitAnalysis(folderPath, matchData)
-            processedMatchesData[matchID][PROCESSING_HIT_ANALYSIS] = 1;
-            didProcessMatch = true;
-          }
-
-          if(processedMatchesData[matchID][PROCESSING_USER_ANALYSIS] == undefined || forceProcess){
-            processMatchUserAnalysis(folderPath, matchData)
-            processedMatchesData[matchID][PROCESSING_USER_ANALYSIS] = 1;
-            didProcessMatch = true;
-          }
-          console.log("processed users")
-
-          if(processedMatchesData[matchID][PROCESSING_ROUND_ANALYSIS] == undefined || forceProcess){
-            processMatchRoundsAnalysis(folderPath, matchData)
-            processedMatchesData[matchID][PROCESSING_ROUND_ANALYSIS] = 1;
-            didProcessMatch = true;
-          }
-          // console.log("")
-          if(didProcessMatch == true){
-            didProcess()
-          }
-          fs.writeFileSync('private/processedMatches.json', JSON.stringify(processedMatchesData, null, 2) , 'utf-8');
-          console.log("Handled "+folderPath+", processed: "+didProcessMatch)
-        }
-      }catch(err){
-         // bad game
-         console.log("ERROR "+err+"_");//+JSON.stringify(matchDataRaw))
-      }
-    }
-
-    function processMatchUserAnalysis(folderPath, matchData){
-      var matchID = matchData["matchInfo"]["matchId"]
-      var mapId = matchData["matchInfo"]["mapId"]
-
-      let players = matchData["players"]
-      var playerData = {}
-
-      var blueTeamHighestScore = 0
-      var blueTeamHighestScoreSubject = ""
-
-      var redTeamHighestScore = 0
-      var redTeamHighestScoreSubject = ""
-
-      var scores = []
-      for(var i = 0; i < players.length; i++){
-        let playerInfo = players[i];
-        let subject = playerInfo["subject"]
-        playerData[subject] = {
-          "gameName":playerInfo["gameName"],
-          "tagLine":playerInfo["tagLine"],
-          "partyId":playerInfo["partyId"],
-          "characterId":playerInfo["characterId"],
-          "stats":playerInfo["stats"],
-          "teamId":playerInfo["teamId"]
-        }
-        scores.push(playerInfo["stats"]["score"])
-
-        let playerScore = playerInfo["stats"]["score"]
-        let playerTeam = playerInfo["teamId"]
-
-        if(playerTeam == "Blue" && playerScore > blueTeamHighestScore){
-          blueTeamHighestScore = playerScore
-          blueTeamHighestScoreSubject = subject
-        }
-        if(playerTeam == "Red" && playerScore > redTeamHighestScore){
-          redTeamHighestScore = playerScore
-          redTeamHighestScoreSubject = subject
-        }
-      }
-      scores.sort(function(a, b){return b-a})
-
-      var redTeamScore = 0;
-      var blueTeamScore = 0;
-
-      var rounds = matchData["roundResults"]
-      for(var i = 0; i < rounds.length; i++){
-        var roundData = rounds[i]
-
-        let winningTeam = roundData["winningTeam"]
-
-        if(winningTeam == "Blue"){
-          blueTeamScore += 1
-        }else{
-          redTeamScore += 1
-        }
-
-        let roundResult = roundData["roundResultCode"]
-
-        if(roundResult != "Surrendered"){
-          var planter = roundData["bombPlanter"]
-          var defuser = roundData["bombDefuser"]
-          if(planter != undefined){
-            if(playerData[planter]["stats"]["plants"] == undefined){
-              playerData[planter]["stats"]["plants"] = 0
-            }
-            playerData[planter]["stats"]["plants"] += 1
-          }
-
-          if(defuser != undefined){
-            if(playerData[defuser]["stats"]["defuses"] == undefined){
-              playerData[defuser]["stats"]["defuses"] = 0
-            }
-            playerData[defuser]["stats"]["defuses"] += 1
-          }
-
-          var earlistKillTime = Number.MAX_SAFE_INTEGER
-          var earliestKillSubject = ""
-          // calculate first bloods
-          var roundPlayerStats = roundData["playerStats"]
-          for(var p = 0; p < roundPlayerStats.length; p++){
-            var player = roundPlayerStats[p]
-            var curSubject = player["subject"]
-            var playerKills = player["kills"];
-            for(var k = 0; k < playerKills.length; k++){
-              var killData = playerKills[k]
-              var killTime = killData["roundTime"]
-              if(killTime < earlistKillTime){
-                earlistKillTime = killTime
-                earliestKillSubject = curSubject
-              }
-            }
-          }
-
-          if(playerData[earliestKillSubject]["stats"]["firstBloods"] == undefined){
-            playerData[earliestKillSubject]["stats"]["firstBloods"] = 0
-          }
-          playerData[earliestKillSubject]["stats"]["firstBloods"] += 1
-        }
-      }
-
-      var winningTeam = redTeamScore > blueTeamScore ? "Red" : (redTeamScore == blueTeamScore ? "Draw" : "Blue")
-
-      var teamMVP = ""
-      var matchMVP = ""
-
-      if(redTeamHighestScore > blueTeamHighestScore){
-        // red team has match mvp, blue team has team mvp
-        matchMVP = redTeamHighestScoreSubject
-        teamMVP = blueTeamHighestScoreSubject
-      }else{
-        matchMVP = blueTeamHighestScoreSubject
-        teamMVP = redTeamHighestScoreSubject
-      }
-
-      var gameInfoData = {
-        "teamMVP":teamMVP,
-        "matchMVP":matchMVP,
-        "blueScore":blueTeamScore,
-        "redScore":redTeamScore,
-        "winningTeam":winningTeam,
-        "matchID":matchID,
-        "mapId":mapId,
-        "scores":scores
-      }
-
-      var finalUserData = {
-        "users":playerData,
-        "gameInfo":gameInfoData
-      }
-
-      fs.writeFileSync(folderPath+'/users.json', JSON.stringify(finalUserData, null, 2) , 'utf-8');
-    }
-
-    function processMatchHitAnalysis(folderPath, matchData){
-      let rounds = matchData["roundResults"]
-      var hitsData = {}
-      for(var i = 0; i < rounds.length; i++){
-        let roundData = rounds[i];
-        let roundPlayerStats = roundData["playerStats"];
-        for(var j = 0; j < roundPlayerStats.length; j++){
-          let playerData = roundPlayerStats[j];
-          let subject = playerData["subject"]
-          let damageData = playerData["damage"];
-          for(var k = 0; k < damageData.length; k++){
-            let damageEntity = damageData[k];
-            if(hitsData[subject] == undefined){
-              hitsData[subject] = {
-                "headshots":0,
-                "bodyshots":0,
-                "legshots":0
-              }
-            }
-            hitsData[subject]["headshots"] += damageEntity["headshots"];
-            hitsData[subject]["bodyshots"] += damageEntity["bodyshots"];
-            hitsData[subject]["legshots"] += damageEntity["legshots"];
-          }
-        }
-      }
-      fs.writeFileSync(folderPath+'/hits.json', JSON.stringify(hitsData, null, 2) , 'utf-8');
-    }
-
-    function processMatchRoundsAnalysis(folderPath, matchData){
-      var allRoundDataFinal = {}
-
-      let matchPlayers = matchData["players"]
-      var playerCharacters = {}
-
-      var teamInfo = {}
-      for(var p = 0; p < matchPlayers.length; p++){
-        teamInfo[matchPlayers[p]["subject"]] = matchPlayers[p]["teamId"]
-        playerCharacters[matchPlayers[p]["subject"]] = matchPlayers[p]["characterId"]
-      }
-
-      allRoundDataFinal["teamInfo"] = teamInfo
-
-      let rounds = matchData["roundResults"]
-
-      var roundDataFinal = {}
-      var roundWinInfo = {}
-      var roundResultInfo = {}
-      var roundScoreTotals = {}
-
-
-      for(var i = 0; i < rounds.length; i++){
-        let roundData = rounds[i];
-
-        let roundNum = roundData["roundNum"]
-        let winningTeam = roundData["winningTeam"]
-        let roundResult = roundData["roundResultCode"]
-
-        roundWinInfo[""+roundNum] = winningTeam
-        roundResultInfo[""+roundNum] = roundResult
-
-        if(roundResult != "Surrendered"){
-
-        let roundPlayerStats = roundData["playerStats"];
-        for(var j = 0; j < roundPlayerStats.length; j++){
-            let playerData = roundPlayerStats[j];
-            let subject = playerData["subject"];
-            let playerTeam = teamInfo[subject]
-
-            let score = playerData["score"];
-
-            if(roundDataFinal[subject] == undefined){
-              roundDataFinal[subject] = []
-            }
-
-            if(roundScoreTotals[subject] == undefined){
-              roundScoreTotals[subject] = 0
-            }
-            roundScoreTotals[subject] += score
-
-
-
-            var roundPlayerData = {}
-
-            roundPlayerData["roundNum"] = roundNum
-
-            // compute damage breakdown
-            roundPlayerData["damage"] = {}
-            roundPlayerData["damage"]["total"] = 0;
-            let damageData = playerData["damage"];
-            var damageBreakdown = []
-            for(var k = 0; k < damageData.length; k++){
-              let damageEntity = damageData[k];
-              let breakdownEntity = {
-                "receiver":damageEntity["receiver"],
-                "damage":damageEntity["damage"]
-              }
-              roundPlayerData["damage"]["total"] += damageEntity["damage"]
-              damageBreakdown.push(breakdownEntity)
-            }
-            roundPlayerData["damage"]["breakdown"] = damageBreakdown
-
-            // compute kills
-            var killBreakdown = []
-            let killData = playerData["kills"]
-            for(var k = 0; k < killData.length; k++){
-              let killEntity = killData[k]
-              let roundTime = killEntity["roundTime"]
-              let gameTime = killEntity["gameTime"]
-              let victim = killEntity["victim"]
-              let killer = killEntity["killer"]
-              let victimLocation = killEntity["victimLocation"]
-
-              let killerLocation = {}
-              var playerLocations = killEntity["playerLocations"]
-              for(var l = 0; l < playerLocations.length; l++){
-                let playerLocation = playerLocations[l];
-                let playerLocationSubject = playerLocation["subject"]
-
-                if(playerLocationSubject == killer){
-                  killerLocation["x"] = playerLocation["location"]["x"]
-                  killerLocation["y"] = playerLocation["location"]["y"]
-                  killerLocation["viewRadians"] = playerLocation["viewRadians"]
-                  break;
-                }
-              }
-
-              var playerKillData = {}
-              playerKillData["roundTime"] = roundTime
-              playerKillData["gameTime"] = gameTime
-              playerKillData["victim"] = victim
-              playerKillData["victimLocation"] = victimLocation
-              playerKillData["killerLocation"] = killerLocation
-              killBreakdown.push(playerKillData)
-
-            }
-            roundPlayerData["kills"] = killBreakdown
-
-            // economy breakdown
-            var economyBreakdown = {}
-            var economyData = playerData["economy"]
-
-            economyBreakdown["value"] = economyData["loadoutValue"]
-            economyBreakdown["remaining"] = economyData["remaining"]
-            economyBreakdown["spent"] = economyData["spent"]
-            economyBreakdown["weapon"] = economyData["weapon"]
-            economyBreakdown["armor"] = economyData["armor"]
-            roundPlayerData["economy"] = economyBreakdown
-
-            roundPlayerData["score"] = score;
-
-            roundDataFinal[subject].push(roundPlayerData)
-          }
-        }
-      }
-
-
-      allRoundDataFinal["winResults"] = roundWinInfo
-      allRoundDataFinal["roundInfo"] = roundDataFinal
-      allRoundDataFinal["scoreTotals"] = roundScoreTotals
-      allRoundDataFinal["roundResults"] = roundResultInfo
-
-      allRoundDataFinal["playerCharacters"] = playerCharacters
-
-      // console.log("ROUND STATS DATA "+folderPath)
-      fs.writeFileSync(folderPath+'/roundStats.json', JSON.stringify(allRoundDataFinal, null, 2) , 'utf-8');
     }
 
     function processMatchUtilAnalysis(folderPath, matchData){
@@ -1179,112 +395,6 @@ bot.on('message', async function(msg) {
     function sleep(ms) {
       return new Promise((resolve) => {
         setTimeout(resolve, ms);
-      });
-    }
-
-    function computeTotalHits(){
-      var hitsData = {}
-
-      fs.readdir(MATCHES_PROCESSED_PATH, function(err, filenames) {
-        if (err) {
-          onError(err);
-          return;
-        }
-        filenames.forEach(function(filename) {
-          try{
-            let matchId = filename
-
-            // TODO find a way to only process comps
-            let rawHitsData = fs.readFileSync(MATCHES_PROCESSED_PATH + filename + "/hits.json");
-            let matchHitsData = JSON.parse(rawHitsData)
-
-            for (var subject in matchHitsData) {
-              // check if the property/key is defined in the object itself, not in parent
-              if (matchHitsData.hasOwnProperty(subject)) {
-                // console.log(subject, dictionary[subject]);
-                let damageEntity = matchHitsData[subject];
-                if(hitsData[subject] == undefined){
-                  hitsData[subject] = {
-                    "headshots":0,
-                    "bodyshots":0,
-                    "legshots":0
-                  }
-                }
-                hitsData[subject]["headshots"] += damageEntity["headshots"];
-                hitsData[subject]["bodyshots"] += damageEntity["bodyshots"];
-                hitsData[subject]["legshots"] += damageEntity["legshots"];
-              }
-            }
-          }catch{
-
-          }
-
-        });
-        totalHitsStats = hitsData;
-        fs.writeFileSync('private/totalStats/hits.json', JSON.stringify(hitsData, null, 2) , 'utf-8');
-      });
-    }
-
-    // build aliases
-    function computeTotalUsers(){
-      var playerData = {}
-
-      fs.readdir(MATCHES_PROCESSED_PATH, function(err, filenames) {
-        if (err) {
-          onError(err);
-          return;
-        }
-        filenames.forEach(function(filename) {
-          try {
-            let rawUsersData = fs.readFileSync(MATCHES_PROCESSED_PATH + filename + "/users.json");
-            let matchUsersData = JSON.parse(rawUsersData)["users"]
-
-            for (var subject in matchUsersData) {
-              // check if the property/key is defined in the object itself, not in parent
-              if (matchUsersData.hasOwnProperty(subject)) {
-                // console.log(subject, dictionary[subject]);
-                let userEntity = matchUsersData[subject];
-                if(playerData[subject] == undefined){
-                  playerData[subject] = {
-                    "gameName":userEntity["gameName"],
-                    "tagLine":userEntity["tagLine"],
-                    "stats":{
-                      "kills":0,
-                      "deaths":0,
-                      "assists":0,
-                      "playtimeMillis":0,
-                      "score":0,
-                      "roundsPlayed":0,
-                      "totalGamesPlayed":0,
-                      "defuses":0,
-                      "plants":0,
-                      "firstBloods":0
-                    }
-                  }
-                }
-                playerData[subject]["stats"]["kills"] += userEntity["stats"]["kills"];
-                playerData[subject]["stats"]["score"] += userEntity["stats"]["score"];
-                playerData[subject]["stats"]["deaths"] += userEntity["stats"]["deaths"];
-                playerData[subject]["stats"]["assists"] += userEntity["stats"]["assists"];
-                playerData[subject]["stats"]["playtimeMillis"] += userEntity["stats"]["playtimeMillis"];
-                playerData[subject]["stats"]["roundsPlayed"] += userEntity["stats"]["roundsPlayed"];
-                playerData[subject]["stats"]["kd"] = playerData[subject]["stats"]["kills"]/playerData[subject]["stats"]["deaths"];
-                playerData[subject]["stats"]["totalGamesPlayed"] += 1;
-                if(userEntity["stats"]["defuses"] != undefined)
-                  playerData[subject]["stats"]["defuses"] += userEntity["stats"]["defuses"];
-                if(userEntity["stats"]["plants"] != undefined)
-                  playerData[subject]["stats"]["plants"] += userEntity["stats"]["plants"];
-                if(userEntity["stats"]["firstBloods"] != undefined)
-                  playerData[subject]["stats"]["firstBloods"] += userEntity["stats"]["firstBloods"];
-              }
-            }
-          }catch{
-
-          }
-
-        });
-        totalUserStats = playerData
-        fs.writeFileSync('private/totalStats/users.json', JSON.stringify(playerData, null, 2) , 'utf-8');
       });
     }
 
@@ -1921,8 +1031,19 @@ bot.on('message', async function(msg) {
       }
 
       function readAllMatches(){
-        var matches = matchHistoryData[userId]["MatchSort"].slice(0, 8) // restrict to 8 matches to keep 1024 char limit
-        var roundStatsFiles = matches.map(function(matchId){
+        // var matches = matchHistoryData[userId]["MatchSort"].slice(0, 8) // restrict to 8 matches to keep 1024 char limit
+        // get only comp matches (only those are processed right now)
+        var matchSort = matchHistoryData[userId]["MatchSort"]
+        var compMatches = []
+        for(var i = 0; i < matchSort.length; i++){
+          var matchId = matchSort[i]
+          var matchInfo = matchHistoryData[userId]["Matches"][matchId]
+          if(matchInfo["TierAfterUpdate"] > 0){
+            compMatches.push(matchId)
+          }
+        }
+
+        var roundStatsFiles = compMatches.map(function(matchId){
           return MATCHES_PROCESSED_PATH+matchId+"/users.json"
         })
         return Promise.all(roundStatsFiles.map(getFile))
@@ -2020,11 +1141,10 @@ bot.on('message', async function(msg) {
       return s.charAt(0).toUpperCase() + s.slice(1)
     }
 
-    function doAllComputation(){
-      computeTotalHits()
-      computeTotalUsers()
-      bot.channels.cache.get("798343660001165332").send("Computed all stats.");
-    }
+
+
+
+
     // elo = get elo
     // gam = get all matches
     if(arg == "elo" || arg == "gam" || arg == "uocm"){
@@ -2038,7 +1158,7 @@ bot.on('message', async function(msg) {
       if(alias != undefined){
         let userId = subjectIdAliases[alias]
         if(userId != undefined){
-          getUserAuth(process.env.USERNAME, process.env.PASSWORD, async function(creds){
+          getUserAuth(process.env.VAL_USERNAME, process.env.PASSWORD, async function(creds){
             // let userId = creds["userId"];
 
             let entitlementsToken = creds["entitlementsToken"];
@@ -2046,23 +1166,10 @@ bot.on('message', async function(msg) {
             let expiryTime = creds["expiry"];
 
             if(arg == "elo"){
-              displayUserElo(userId, usernameArg, accessToken, entitlementsToken)
-            }else if(arg == "gam"){
-<<<<<<< Updated upstream
-              // let allMatchMsg = await msg.channel.send("Downloading all raw match data for "+usernameArg)
-              // numCompleted[userId] = 0;
-              //
-              // if(matchesDownloadedData[userId] == undefined){
-              //   matchesDownloadedData[userId] = {}
-              // }
-              //
-              // batchDownloadMatchData(userId, accessToken, entitlementsToken, 0, 20, allMatchMsg)
-            }else if(arg == "uocm"){ // update old comp matches
-              // batchSaveMatchHistory(userId, accessToken, entitlementsToken)
-=======
-              downloadMatchHistory(accessToken, entitlementsToken, competitiveupdatesEndpointResult)
->>>>>>> Stashed changes
-            }
+              displayUserElo(userId, accessToken, entitlementsToken)
+            }//else if(arg == "gam"){
+            //  downloadMatchHistory(accessToken, entitlementsToken, competitiveupdatesEndpointResult)
+            //}
           });
         }else{
           msg.channel.send("Alias has not beed added yet. Use ?add")
@@ -2195,7 +1302,7 @@ bot.on('message', async function(msg) {
 
           matchHistoryTable(userId, function(table){
             msgText += "\n"+table
-            embed.addField("Match History", table)
+            embed.addField("Competitive Match History", table)
             statMsg.edit(embed)
             // statMsg.edit(msgText)
           })
@@ -2244,7 +1351,7 @@ bot.on('message', async function(msg) {
         pageNum = 1
       }
 
-      getUserAuth(process.env.USERNAME, process.env.PASSWORD, async function(creds){
+      getUserAuth(process.env.VAL_USERNAME, process.env.PASSWORD, async function(creds){
         let userId = creds["userId"];
         let entitlementsToken = creds["entitlementsToken"];
         let accessToken = creds["accessToken"];
@@ -2288,28 +1395,39 @@ bot.on('message', async function(msg) {
 
     // ?add <GameName#TagLine> <alias>
     if(arg == "add"){
-      let gameNameArg = args[1]
-      if(gameNameArg != undefined && args.length >= 3){
-        let gameNameSplit = gameNameArg.split("#")
-        let gameName = gameNameSplit[0].toLowerCase()
-        let tagLine = gameNameSplit[1].toLowerCase()
-        var obj;
-        Object.keys(totalUserStats).forEach(x => obj = (totalUserStats[x].gameName.toLowerCase() === gameName && totalUserStats[x].tagLine.toLowerCase() === tagLine) ? {"id":x}: obj);
-        if(obj != undefined){
-          var subjectId = obj["id"]
-          let alias = args[2]
-          if(alias != undefined){
-            if(subjectIdAliases[alias] != undefined){
-              msg.channel.send("This alias already exists. @ me if you want to delete/change it.")
-            }else{
-              subjectIdAliases[alias] = subjectId
-              fs.writeFileSync('private/static/userIDs.json', JSON.stringify(subjectIdAliases, null, 2) , 'utf-8');
+      const regex = new RegExp('"[^"]+"|[\\S]+', 'g');
+      const arguments = [];
+      argString.match(regex).forEach(element => {
+          if (!element) return;
+          return arguments.push(element.replace(/"/g, ''));
+      });
+      console.log("ARGS "+arguments)
 
-              msg.channel.send("User added successfully. Code: "+subjectId.split("-")[0])
+      let gameNameArg = arguments[1]
+      if(gameNameArg != undefined && arguments.length >= 3){
+        let gameNameSplit = gameNameArg.split("#")
+        console.log("game "+JSON.stringify(gameNameArg))
+        if(gameNameSplit.length == 2){
+          let gameName = gameNameSplit[0].toLowerCase()
+          let tagLine = gameNameSplit[1].toLowerCase()
+          var obj;
+          Object.keys(totalUserStats).forEach(x => obj = (totalUserStats[x].gameName.toLowerCase() === gameName && totalUserStats[x].tagLine.toLowerCase() === tagLine) ? {"id":x}: obj);
+          if(obj != undefined){
+            var subjectId = obj["id"]
+            let alias = arguments[2].toLowerCase()
+            if(alias != undefined){
+              if(subjectIdAliases[alias] != undefined){
+                msg.channel.send("An alias for this account already exists. @ me if you want to delete/change it.")
+              }else{
+                subjectIdAliases[alias] = subjectId
+                fs.writeFileSync('private/static/userIDs.json', JSON.stringify(subjectIdAliases, null, 2) , 'utf-8');
+
+                msg.channel.send("User added successfully. Code: "+subjectId.split("-")[0])
+              }
             }
+          }else{
+            msg.channel.send("Could not find user ID. You must play a game with any existing user first.")
           }
-        }else{
-          msg.channel.send("Could not find user ID. You must play a game with any existing user first.")
         }
       }else{
         msg.channel.send("The proper usage is ?add <InGameName#TagLine> <alias>")
@@ -2328,6 +1446,31 @@ bot.on('message', async function(msg) {
           }
           msg.channel.send("The alias **"+alias+"** is assigned to the game account **"+userFullName+"**")
         }
+      }
+    }
+
+    if(arg == "whoall"){
+      var finalMsg = "Current Users:"
+      var data = []
+      for (var alias in subjectIdAliases) {
+        // check if the property/key is defined in the object itself, not in parent
+        if (subjectIdAliases.hasOwnProperty(alias)) {
+          var userId = subjectIdAliases[alias]
+          var userStats = totalUserStats[userId];
+          var userFullName;
+          if(userStats != undefined){
+            userFullName = userStats["gameName"]+"#"+userStats["tagLine"]
+          }
+          data.push([alias, userFullName])
+        }
+      }
+      var table = buildAsciiTable("Current Users", ["Alias", "IGN"], data, false, false)
+      msg.channel.send(table)
+    }
+
+    if(arg == "ban"){
+      if(msg.member.id == 295701594715062272){
+        msg.channel.send("K")
       }
     }
 
@@ -2361,4 +1504,721 @@ bot.on('message', async function(msg) {
     }
 });
 
+function getUserAuth(username, password, completion){
+  console.log("Get auth "+username)
+  var userAuthCache = authCacheData[username]
+  var expired = true;
+  if(userAuthCache != undefined){
+    var expireDate = userAuthCache["expiry"]
+    var d = new Date();
+    var seconds = Math.round(d.getTime() / 1000);
+    if(seconds > expireDate){
+      expired = true
+    }else{
+      expired = false
+    }
+  }
+
+  if(userAuthCache != undefined && expired == false){
+    console.log("Using cache")
+    completion(userAuthCache)
+  }else{
+    // not found, get it
+
+    var cookieJar = request.jar();
+    var initialAuthOpts = {
+      uri: 'https://auth.riotgames.com/api/v1/authorization',
+      method: 'POST',
+      json: {
+        'client_id': 'play-valorant-web-prod',
+        'nonce': '1',
+        'redirect_uri': 'https://playvalorant.com/opt_in',
+        'response_type': 'token id_token'
+      },
+      jar: cookieJar
+    }
+
+    request(initialAuthOpts, function(err, res, body) {
+
+      initialAuthOpts.json = {
+        'type': 'auth',
+        'username': username,
+        'password': password
+      }
+      initialAuthOpts.method = "PUT"
+      request(initialAuthOpts, function(err1, res, body1) {
+        if(body1["error"] != undefined){
+          console.log("u "+username+" p "+password)
+          msg.channel.send("Bad username/password. Contact account owner.\nThe API might also be down.")
+        }else{
+          let returnData = body1["response"]["parameters"]["uri"]
+          let rDS = returnData.split('#')[1];
+          let params = querystring.parse(rDS)
+
+          let accessToken = params["access_token"];
+          let expireTime = params["expires_in"]; // TODO add to current time and store
+
+          const entitlementsTokenOptions = {
+              url: "https://entitlements.auth.riotgames.com/api/token/v1",
+              method: 'POST',
+              headers: {
+                  'Authorization': 'Bearer '+accessToken,
+                  "Content-Type": "application/json"
+              },
+              json:{},
+              jar: cookieJar
+          };
+          request(entitlementsTokenOptions, function(err, res, body2) {
+            var entitlementsToken = body2["entitlements_token"]
+
+            const userInfoData = {
+                url: "https://auth.riotgames.com/userinfo",
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer '+accessToken,
+                    "Content-Type": "application/json"
+                },
+                json:{},
+                jar: cookieJar
+            };
+            request(userInfoData, function(err, res, body3) {
+              var userId = body3["sub"];
+              var d = new Date();
+              var seconds = Math.round(d.getTime() / 1000);
+              var finalExpireTime = parseInt(expireTime) + seconds;
+              var creds = {
+                "userId":userId,
+                "entitlementsToken":entitlementsToken,
+                "accessToken":accessToken,
+                "expiry":finalExpireTime
+              }
+              authCacheData[username] = creds;
+              fs.writeFileSync('private/authCache.json', JSON.stringify(authCacheData, null, 2) , 'utf-8');
+              completion(creds)
+            });
+          });
+        }
+      });
+    });
+  }
+}
+
+function downloadMatchHistory(accessToken, entitlementsToken, computeStats, competitiveupdatesEndpointResult){
+
+  // this will download the matches that havent already been downloaded, and add it to
+  var subject = competitiveupdatesEndpointResult["Subject"]
+  var matchInfoData = competitiveupdatesEndpointResult["Matches"]
+
+  var matchInfoDict = {}
+  for(var i = 0; i < matchInfoData.length; i++){
+    matchInfoDict[matchInfoData[i]["MatchID"]] = matchInfoData[i]
+  }
+
+  if(matchesDownloadedData[subject] == undefined){
+    matchesDownloadedData[subject] = {}
+  }
+
+  if(matchHistoryData[subject] == undefined){
+    matchHistoryData[subject] = {
+      "Matches":{},
+      "MatchSort":[]
+    }
+  }
+
+  var matchDetailsPromises = matchInfoData.reduce(function (res, matchInfo) {
+    var matchId = matchInfo["MatchID"]
+    var matchStart = matchInfo["MatchStartTime"]
+    if(matchesDownloadedData[subject][matchId] == undefined && matchStart > 1610442000000){
+      const options = {
+          url: 'https://pd.na.a.pvp.net/match-details/v1/matches/'+matchId,
+          method: 'GET',
+          headers: {
+              "Content-Type": "application/json",
+              'Authorization': 'Bearer '+accessToken,
+              'X-Riot-Entitlements-JWT': entitlementsToken
+          },
+      };
+      var req = requestPromise(options)
+      res.push(req);
+    }
+    return res;
+  }, []);
+
+  Promise.all(matchDetailsPromises).then((allMatchData) => {
+    for(var i = 0; i < allMatchData.length; i++){
+      var matchData = JSON.parse(allMatchData[i])
+      var matchID = matchData["matchInfo"]["matchId"]
+      var queueID = matchData["matchInfo"]["queueID"]
+
+      var rawPath = rawMatchPath(matchID)
+      fs.writeFileSync(rawPath, JSON.stringify(matchData, null, 2), 'utf8');
+      matchesDownloadedData[subject][matchID] = 1
+      // console.log("Promise for download "+matchID)
+
+      matchHistoryData[subject]["Matches"][matchID] = matchInfoDict[matchID]
+
+      processMatchData(matchID, matchData, function(){
+        bot.channels.cache.get("798343660001165332").send("Processed and downloaded match "+matchID+" for user "+subject);
+      }, false)
+    }
+
+    if(computeStats){
+      doAllComputation()
+    }
+
+    var matchItems = Object.keys(matchHistoryData[subject]["Matches"]).map(function(key) {
+      return [key, matchHistoryData[subject]["Matches"][key]];
+    });
+
+    // Sort the array based on the second element
+    matchItems.sort(function(firstObj, secondObj) {
+      var firstMatch = firstObj[1]
+      var secondMatch = secondObj[1]
+
+      return secondMatch["MatchStartTime"] - firstMatch["MatchStartTime"]
+    })
+
+    var matchSortArray = []
+    for(var i = 0; i < matchItems.length; i++){
+      var match = matchItems[i][1]
+      var matchId = match["MatchID"]
+      matchSortArray.push(matchId)
+    }
+
+    matchHistoryData[subject]["MatchSort"] = matchSortArray
+
+
+
+    fs.writeFileSync('private/matchHistory.json', JSON.stringify(matchHistoryData, null, 2), 'utf-8');
+    fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2), 'utf-8');
+
+  });
+}
+
+function updateUserElo(userId, accessToken, entitlementsToken, computeStats, dataCompletion){
+  const options = {
+      url: 'https://pd.na.a.pvp.net/mmr/v1/players/'+userId+"/competitiveupdates",
+      method: 'GET',
+      headers: {
+          "Content-Type": "application/json",
+          'Authorization': 'Bearer '+accessToken,
+          'X-Riot-Entitlements-JWT': entitlementsToken
+      },
+  };
+
+  console.log("Updating user Elo For ID "+userId)
+  request(options, async function(err, res, body) {
+    let json = JSON.parse(body);
+
+    downloadMatchHistory(accessToken, entitlementsToken, computeStats, json)
+    dataCompletion(json)
+  })
+}
+
+function downloadMatchData(accessToken, entitlementsToken, matchID, downloadCompletion){
+  const options = {
+      url: 'https://pd.na.a.pvp.net/match-details/v1/matches/'+matchID,
+      method: 'GET',
+      headers: {
+          "Content-Type": "application/json",
+          'Authorization': 'Bearer '+accessToken,
+          'X-Riot-Entitlements-JWT': entitlementsToken
+      },
+  };
+  request(options, function(err, res, body) {
+    fs.writeFile(rawMatchPath(matchID), body, 'utf8', function (err) {
+        if (err) {
+          console.log(err);
+        }else{
+          downloadCompletion(matchID, JSON.parse(body))
+        }
+    });
+  });
+}
+
+function rawMatchPath(matchID){
+  return MATCHES_RAW_PATH+matchID+'.json'
+}
+
+function processMatchData(matchID, matchData, didProcess, forceProcess){
+  if(processedMatchesData[matchID] == undefined){
+    processedMatchesData[matchID] = {}
+  }
+
+  try{
+    // TODO for now only process competitive games.
+    let matchStartTime = matchData["matchInfo"]["gameStartMillis"]
+    if(matchData["matchInfo"]["queueID"] == "competitive"){
+      let folderPath = MATCHES_PROCESSED_PATH+matchID
+      // console.log(folderPath)
+      if (!fs.existsSync(folderPath)){
+        console.log("Making folder "+folderPath)
+        fs.mkdirSync(folderPath);
+      }
+
+      processedMatchesData[matchID]["gameStartMillis"] = matchStartTime
+      var didProcessMatch = false;
+      if(processedMatchesData[matchID][PROCESSING_HIT_ANALYSIS] == undefined || forceProcess){
+        processMatchHitAnalysis(folderPath, matchData)
+        processedMatchesData[matchID][PROCESSING_HIT_ANALYSIS] = 1;
+        didProcessMatch = true;
+      }
+
+      if(processedMatchesData[matchID][PROCESSING_USER_ANALYSIS] == undefined || forceProcess){
+        processMatchUserAnalysis(folderPath, matchData)
+        processedMatchesData[matchID][PROCESSING_USER_ANALYSIS] = 1;
+        didProcessMatch = true;
+      }
+
+      if(processedMatchesData[matchID][PROCESSING_ROUND_ANALYSIS] == undefined || forceProcess){
+        processMatchRoundsAnalysis(folderPath, matchData)
+        processedMatchesData[matchID][PROCESSING_ROUND_ANALYSIS] = 1;
+        didProcessMatch = true;
+      }
+      // console.log("")
+      if(didProcessMatch == true){
+        didProcess()
+      }
+      fs.writeFileSync('private/processedMatches.json', JSON.stringify(processedMatchesData, null, 2) , 'utf-8');
+      console.log("Handled "+folderPath+", processed: "+didProcessMatch)
+    }
+  }catch(err){
+     // bad game
+     console.log("ERROR "+err+"_");//+JSON.stringify(matchDataRaw))
+  }
+}
+
+function processMatchUserAnalysis(folderPath, matchData){
+  var matchID = matchData["matchInfo"]["matchId"]
+  var mapId = matchData["matchInfo"]["mapId"]
+
+  let players = matchData["players"]
+  var playerData = {}
+
+  var blueTeamHighestScore = 0
+  var blueTeamHighestScoreSubject = ""
+
+  var redTeamHighestScore = 0
+  var redTeamHighestScoreSubject = ""
+
+  var scores = []
+  for(var i = 0; i < players.length; i++){
+    let playerInfo = players[i];
+    let subject = playerInfo["subject"]
+    playerData[subject] = {
+      "gameName":playerInfo["gameName"],
+      "tagLine":playerInfo["tagLine"],
+      "partyId":playerInfo["partyId"],
+      "characterId":playerInfo["characterId"],
+      "stats":playerInfo["stats"],
+      "teamId":playerInfo["teamId"]
+    }
+    scores.push(playerInfo["stats"]["score"])
+
+    let playerScore = playerInfo["stats"]["score"]
+    let playerTeam = playerInfo["teamId"]
+
+    if(playerTeam == "Blue" && playerScore > blueTeamHighestScore){
+      blueTeamHighestScore = playerScore
+      blueTeamHighestScoreSubject = subject
+    }
+    if(playerTeam == "Red" && playerScore > redTeamHighestScore){
+      redTeamHighestScore = playerScore
+      redTeamHighestScoreSubject = subject
+    }
+  }
+  scores.sort(function(a, b){return b-a})
+
+  var redTeamScore = 0;
+  var blueTeamScore = 0;
+
+  var rounds = matchData["roundResults"]
+  for(var i = 0; i < rounds.length; i++){
+    var roundData = rounds[i]
+
+    let winningTeam = roundData["winningTeam"]
+
+    if(winningTeam == "Blue"){
+      blueTeamScore += 1
+    }else{
+      redTeamScore += 1
+    }
+
+    let roundResult = roundData["roundResultCode"]
+
+    if(roundResult != "Surrendered"){
+      var planter = roundData["bombPlanter"]
+      var defuser = roundData["bombDefuser"]
+      if(planter != undefined){
+        if(playerData[planter]["stats"]["plants"] == undefined){
+          playerData[planter]["stats"]["plants"] = 0
+        }
+        playerData[planter]["stats"]["plants"] += 1
+      }
+
+      if(defuser != undefined){
+        if(playerData[defuser]["stats"]["defuses"] == undefined){
+          playerData[defuser]["stats"]["defuses"] = 0
+        }
+        playerData[defuser]["stats"]["defuses"] += 1
+      }
+
+      var earlistKillTime = Number.MAX_SAFE_INTEGER
+      var earliestKillSubject = ""
+      // calculate first bloods
+      var roundPlayerStats = roundData["playerStats"]
+      for(var p = 0; p < roundPlayerStats.length; p++){
+        var player = roundPlayerStats[p]
+        var curSubject = player["subject"]
+        var playerKills = player["kills"];
+        for(var k = 0; k < playerKills.length; k++){
+          var killData = playerKills[k]
+          var killTime = killData["roundTime"]
+          if(killTime < earlistKillTime){
+            earlistKillTime = killTime
+            earliestKillSubject = curSubject
+          }
+        }
+      }
+
+      if(playerData[earliestKillSubject]["stats"]["firstBloods"] == undefined){
+        playerData[earliestKillSubject]["stats"]["firstBloods"] = 0
+      }
+      playerData[earliestKillSubject]["stats"]["firstBloods"] += 1
+    }
+  }
+
+  var winningTeam = redTeamScore > blueTeamScore ? "Red" : (redTeamScore == blueTeamScore ? "Draw" : "Blue")
+
+  var teamMVP = ""
+  var matchMVP = ""
+
+  if(redTeamHighestScore > blueTeamHighestScore){
+    // red team has match mvp, blue team has team mvp
+    matchMVP = redTeamHighestScoreSubject
+    teamMVP = blueTeamHighestScoreSubject
+  }else{
+    matchMVP = blueTeamHighestScoreSubject
+    teamMVP = redTeamHighestScoreSubject
+  }
+
+  var gameInfoData = {
+    "teamMVP":teamMVP,
+    "matchMVP":matchMVP,
+    "blueScore":blueTeamScore,
+    "redScore":redTeamScore,
+    "winningTeam":winningTeam,
+    "matchID":matchID,
+    "mapId":mapId,
+    "scores":scores
+  }
+
+  var finalUserData = {
+    "users":playerData,
+    "gameInfo":gameInfoData
+  }
+
+  fs.writeFileSync(folderPath+'/users.json', JSON.stringify(finalUserData, null, 2) , 'utf-8');
+}
+
+function processMatchHitAnalysis(folderPath, matchData){
+  let rounds = matchData["roundResults"]
+  var hitsData = {}
+  for(var i = 0; i < rounds.length; i++){
+    let roundData = rounds[i];
+    let roundPlayerStats = roundData["playerStats"];
+    for(var j = 0; j < roundPlayerStats.length; j++){
+      let playerData = roundPlayerStats[j];
+      let subject = playerData["subject"]
+      let damageData = playerData["damage"];
+      for(var k = 0; k < damageData.length; k++){
+        let damageEntity = damageData[k];
+        if(hitsData[subject] == undefined){
+          hitsData[subject] = {
+            "headshots":0,
+            "bodyshots":0,
+            "legshots":0
+          }
+        }
+        hitsData[subject]["headshots"] += damageEntity["headshots"];
+        hitsData[subject]["bodyshots"] += damageEntity["bodyshots"];
+        hitsData[subject]["legshots"] += damageEntity["legshots"];
+      }
+    }
+  }
+  fs.writeFileSync(folderPath+'/hits.json', JSON.stringify(hitsData, null, 2) , 'utf-8');
+}
+
+function processMatchRoundsAnalysis(folderPath, matchData){
+  var allRoundDataFinal = {}
+
+  let matchPlayers = matchData["players"]
+  var playerCharacters = {}
+
+  var teamInfo = {}
+  for(var p = 0; p < matchPlayers.length; p++){
+    teamInfo[matchPlayers[p]["subject"]] = matchPlayers[p]["teamId"]
+    playerCharacters[matchPlayers[p]["subject"]] = matchPlayers[p]["characterId"]
+  }
+
+  allRoundDataFinal["teamInfo"] = teamInfo
+
+  let rounds = matchData["roundResults"]
+
+  var roundDataFinal = {}
+  var roundWinInfo = {}
+  var roundResultInfo = {}
+  var roundScoreTotals = {}
+
+
+  for(var i = 0; i < rounds.length; i++){
+    let roundData = rounds[i];
+
+    let roundNum = roundData["roundNum"]
+    let winningTeam = roundData["winningTeam"]
+    let roundResult = roundData["roundResultCode"]
+
+    roundWinInfo[""+roundNum] = winningTeam
+    roundResultInfo[""+roundNum] = roundResult
+
+    if(roundResult != "Surrendered"){
+
+    let roundPlayerStats = roundData["playerStats"];
+    for(var j = 0; j < roundPlayerStats.length; j++){
+        let playerData = roundPlayerStats[j];
+        let subject = playerData["subject"];
+        let playerTeam = teamInfo[subject]
+
+        let score = playerData["score"];
+
+        if(roundDataFinal[subject] == undefined){
+          roundDataFinal[subject] = []
+        }
+
+        if(roundScoreTotals[subject] == undefined){
+          roundScoreTotals[subject] = 0
+        }
+        roundScoreTotals[subject] += score
+
+
+
+        var roundPlayerData = {}
+
+        roundPlayerData["roundNum"] = roundNum
+
+        // compute damage breakdown
+        roundPlayerData["damage"] = {}
+        roundPlayerData["damage"]["total"] = 0;
+        let damageData = playerData["damage"];
+        var damageBreakdown = []
+        for(var k = 0; k < damageData.length; k++){
+          let damageEntity = damageData[k];
+          let breakdownEntity = {
+            "receiver":damageEntity["receiver"],
+            "damage":damageEntity["damage"]
+          }
+          roundPlayerData["damage"]["total"] += damageEntity["damage"]
+          damageBreakdown.push(breakdownEntity)
+        }
+        roundPlayerData["damage"]["breakdown"] = damageBreakdown
+
+        // compute kills
+        var killBreakdown = []
+        let killData = playerData["kills"]
+        for(var k = 0; k < killData.length; k++){
+          let killEntity = killData[k]
+          let roundTime = killEntity["roundTime"]
+          let gameTime = killEntity["gameTime"]
+          let victim = killEntity["victim"]
+          let killer = killEntity["killer"]
+          let victimLocation = killEntity["victimLocation"]
+
+          let killerLocation = {}
+          var playerLocations = killEntity["playerLocations"]
+          for(var l = 0; l < playerLocations.length; l++){
+            let playerLocation = playerLocations[l];
+            let playerLocationSubject = playerLocation["subject"]
+
+            if(playerLocationSubject == killer){
+              killerLocation["x"] = playerLocation["location"]["x"]
+              killerLocation["y"] = playerLocation["location"]["y"]
+              killerLocation["viewRadians"] = playerLocation["viewRadians"]
+              break;
+            }
+          }
+
+          var playerKillData = {}
+          playerKillData["roundTime"] = roundTime
+          playerKillData["gameTime"] = gameTime
+          playerKillData["victim"] = victim
+          playerKillData["victimLocation"] = victimLocation
+          playerKillData["killerLocation"] = killerLocation
+          killBreakdown.push(playerKillData)
+
+        }
+        roundPlayerData["kills"] = killBreakdown
+
+        // economy breakdown
+        var economyBreakdown = {}
+        var economyData = playerData["economy"]
+
+        economyBreakdown["value"] = economyData["loadoutValue"]
+        economyBreakdown["remaining"] = economyData["remaining"]
+        economyBreakdown["spent"] = economyData["spent"]
+        economyBreakdown["weapon"] = economyData["weapon"]
+        economyBreakdown["armor"] = economyData["armor"]
+        roundPlayerData["economy"] = economyBreakdown
+
+        roundPlayerData["score"] = score;
+
+        roundDataFinal[subject].push(roundPlayerData)
+      }
+    }
+  }
+
+
+  allRoundDataFinal["winResults"] = roundWinInfo
+  allRoundDataFinal["roundInfo"] = roundDataFinal
+  allRoundDataFinal["scoreTotals"] = roundScoreTotals
+  allRoundDataFinal["roundResults"] = roundResultInfo
+
+  allRoundDataFinal["playerCharacters"] = playerCharacters
+
+  // console.log("ROUND STATS DATA "+folderPath)
+  fs.writeFileSync(folderPath+'/roundStats.json', JSON.stringify(allRoundDataFinal, null, 2) , 'utf-8');
+}
+
+function computeTotalHits(){
+  var hitsData = {}
+
+  fs.readdir(MATCHES_PROCESSED_PATH, function(err, filenames) {
+    if (err) {
+      onError(err);
+      return;
+    }
+    filenames.forEach(function(filename) {
+      try{
+        let matchId = filename
+
+        // TODO find a way to only process comps
+        let rawHitsData = fs.readFileSync(MATCHES_PROCESSED_PATH + filename + "/hits.json");
+        let matchHitsData = JSON.parse(rawHitsData)
+
+        for (var subject in matchHitsData) {
+          // check if the property/key is defined in the object itself, not in parent
+          if (matchHitsData.hasOwnProperty(subject)) {
+            // console.log(subject, dictionary[subject]);
+            let damageEntity = matchHitsData[subject];
+            if(hitsData[subject] == undefined){
+              hitsData[subject] = {
+                "headshots":0,
+                "bodyshots":0,
+                "legshots":0
+              }
+            }
+            hitsData[subject]["headshots"] += damageEntity["headshots"];
+            hitsData[subject]["bodyshots"] += damageEntity["bodyshots"];
+            hitsData[subject]["legshots"] += damageEntity["legshots"];
+          }
+        }
+      }catch{
+
+      }
+
+    });
+    totalHitsStats = hitsData;
+    fs.writeFileSync('private/totalStats/hits.json', JSON.stringify(hitsData, null, 2) , 'utf-8');
+  });
+}
+
+// build aliases
+function computeTotalUsers(){
+  var playerData = {}
+
+  fs.readdir(MATCHES_PROCESSED_PATH, function(err, filenames) {
+    if (err) {
+      onError(err);
+      return;
+    }
+    filenames.forEach(function(filename) {
+      try {
+        let rawUsersData = fs.readFileSync(MATCHES_PROCESSED_PATH + filename + "/users.json");
+        let matchUsersData = JSON.parse(rawUsersData)["users"]
+
+        for (var subject in matchUsersData) {
+          // check if the property/key is defined in the object itself, not in parent
+          if (matchUsersData.hasOwnProperty(subject)) {
+            // console.log(subject, dictionary[subject]);
+            let userEntity = matchUsersData[subject];
+            if(playerData[subject] == undefined){
+              playerData[subject] = {
+                "gameName":userEntity["gameName"],
+                "tagLine":userEntity["tagLine"],
+                "stats":{
+                  "kills":0,
+                  "deaths":0,
+                  "assists":0,
+                  "playtimeMillis":0,
+                  "score":0,
+                  "roundsPlayed":0,
+                  "totalGamesPlayed":0,
+                  "defuses":0,
+                  "plants":0,
+                  "firstBloods":0
+                }
+              }
+            }
+            playerData[subject]["stats"]["kills"] += userEntity["stats"]["kills"];
+            playerData[subject]["stats"]["score"] += userEntity["stats"]["score"];
+            playerData[subject]["stats"]["deaths"] += userEntity["stats"]["deaths"];
+            playerData[subject]["stats"]["assists"] += userEntity["stats"]["assists"];
+            playerData[subject]["stats"]["playtimeMillis"] += userEntity["stats"]["playtimeMillis"];
+            playerData[subject]["stats"]["roundsPlayed"] += userEntity["stats"]["roundsPlayed"];
+            playerData[subject]["stats"]["kd"] = playerData[subject]["stats"]["kills"]/playerData[subject]["stats"]["deaths"];
+            playerData[subject]["stats"]["totalGamesPlayed"] += 1;
+            if(userEntity["stats"]["defuses"] != undefined)
+              playerData[subject]["stats"]["defuses"] += userEntity["stats"]["defuses"];
+            if(userEntity["stats"]["plants"] != undefined)
+              playerData[subject]["stats"]["plants"] += userEntity["stats"]["plants"];
+            if(userEntity["stats"]["firstBloods"] != undefined)
+              playerData[subject]["stats"]["firstBloods"] += userEntity["stats"]["firstBloods"];
+          }
+        }
+      }catch{
+
+      }
+
+    });
+    totalUserStats = playerData
+    fs.writeFileSync('private/totalStats/users.json', JSON.stringify(playerData, null, 2) , 'utf-8');
+  });
+}
+
+function doAllComputation(){
+  computeTotalHits()
+  computeTotalUsers()
+  bot.channels.cache.get("798343660001165332").send("Computed all stats.");
+}
+
+cron.schedule('59 * * * *', () => {
+  console.log('running a task every hour');
+  getUserAuth(process.env.VAL_USERNAME, process.env.PASSWORD, async function(creds){
+    let entitlementsToken = creds["entitlementsToken"];
+    let accessToken = creds["accessToken"];
+    let expiryTime = creds["expiry"];
+
+    for (var alias in subjectIdAliases) {
+      // check if the property/key is defined in the object itself, not in parent
+      if (subjectIdAliases.hasOwnProperty(alias)) {
+        var curId = subjectIdAliases[alias]
+        console.log("Doing "+curId+"_"+alias)
+        updateUserElo(curId, accessToken, entitlementsToken, false, async function(json){
+          var subjectThatUpdated = json["Subject"]
+          bot.channels.cache.get("798343660001165332").send("[AUTO] updated user elo for "+subjectThatUpdated);
+        })
+      }
+    }
+    doAllComputation()
+  })
+});
 bot.login(process.env.DISCORD_KEY);
