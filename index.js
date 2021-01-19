@@ -1204,46 +1204,18 @@ bot.on('message', async function(msg) {
       }
     }
 
-    if(arg == "processgame" || arg == "pag" || arg == "fpag"){
-      if(arg == "pag"){
-        // process all games
-        processAllUnprocessedGames(false)
-      }else if(arg == "processgame"){
-        // if(args.length >= 2){
-        //   let matchID = args[1]
-        //   processMatchData(matchID, rawMatchPath(matchID), function(){
-        //     msg.channel.send("Processed "+matchID)
-        //   }, true)
-        // }
-      }else if(arg == "fpag"){
-        console.log("Force")
-        processAllUnprocessedGames(true)
-      }
-    }
-
     if(arg == "computeall"){
       doAllComputation()
       msg.channel.send("All stats have been computed.")
     }
 
     if(arg == "stats"){
-      let usernameRawArg = args[1]
-      if(usernameRawArg != undefined){
-        let usernameArg = usernameRawArg.toLowerCase()
+      let alias = args[1].toLowerCase()
+      if(alias != undefined){
+        let userId = subjectIdAliases[alias]
 
-        var obj;
-
-        if(usernameArg.split("#").length > 1){
-          var gameName = usernameArg.split("#")[0]
-          var tagLine = usernameArg.split("#")[1]
-          Object.keys(totalUserStats).forEach(x => obj = (totalUserStats[x].gameName.toLowerCase() === gameName && totalUserStats[x].tagLine.toLowerCase() === tagLine) ? {"id":x,"obj":totalUserStats[x]}: obj);
-        }else{
-          Object.keys(totalUserStats).forEach(x => obj = totalUserStats[x].gameName.toLowerCase() === usernameRawArg ? {"id":x,"obj":totalUserStats[x]}: obj);
-        }
-        if(obj != undefined){
-          var userId = obj["id"];
-          var userObj = obj["obj"];
-
+        var userObj = totalUserStats[userId]
+        if(userObj != undefined){
           var disclaimer = "**For now, this data only includes competitive games.**"
 
           var userFullName = userObj["gameName"]+"#"+userObj["tagLine"]
@@ -1477,18 +1449,17 @@ bot.on('message', async function(msg) {
     if(arg == "commands"){
       var helpString = "Elo Tracker Commands:\n"
       helpString += "**?elo** commands\n"
-      helpString += "?elo <name> Get the latest Elo and rank of a user, along with their Elo history graph and the results of their 3 latest games\n"
-      helpString += "?elo <name> <number of matches> Same as above, but choose how many maches to show\n"
-      helpString += "?elo <name> <number of matches> d The d stands for 'debug', show the same info but show Match IDs\n"
+      helpString += "?elo <alias> Get the latest Elo and rank of a user, along with their Elo history graph and the results of their 3 latest games\n"
+      helpString += "?elo <alias> <number of matches> Same as above, but choose how many maches to show\n"
+      helpString += "?elo <alias> <number of matches> d The d stands for 'debug', show the same info but show Match IDs\n"
 
       helpString += "\n"
 
-      helpString += "?stats <name or InGameName#TagLine> Display the cummulative stats of a user. Including KDA, playtime, hit percentages, and score\n"
+      helpString += "?stats <alias> Display the cummulative stats of a user. Including KDA, playtime, hit percentages, score, and match history\n"
 
       helpString += "\n"
 
-      helpString += "?headshots Show the headshot % leaderboard\n"
-      helpString += "?scores Show the average score per round leaderboard\n"
+      helpString += "?leaderboards Show all of the leaderboards\n"
 
       helpString += "\n"
 
@@ -2185,7 +2156,8 @@ function computeTotalUsers(){
           }
         }
       }catch{
-
+        // if(filename.incldues("74417d4f"))
+        console.log("File doesnt exist for computation "+filename)
       }
 
     });
@@ -2200,7 +2172,7 @@ function doAllComputation(){
   bot.channels.cache.get("798343660001165332").send("Computed all stats.");
 }
 
-cron.schedule('59 * * * *', () => {
+cron.schedule('53 * * * *', () => {
   console.log('running a task every hour');
   getUserAuth(process.env.VAL_USERNAME, process.env.PASSWORD, async function(creds){
     let entitlementsToken = creds["entitlementsToken"];
