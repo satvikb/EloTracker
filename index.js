@@ -1038,7 +1038,7 @@ bot.on('message', async function(msg) {
         for(var i = 0; i < matchSort.length; i++){
           var matchId = matchSort[i]
           var matchInfo = matchHistoryData[userId]["Matches"][matchId]
-          if(matchInfo["TierAfterUpdate"] > 0){
+          if(matchInfo["TierAfterUpdate"] > 0 && compMatches.length < 8){
             compMatches.push(matchId)
           }
         }
@@ -1406,7 +1406,7 @@ bot.on('message', async function(msg) {
           }
         }
       }else{
-        msg.channel.send("The proper usage is ?add <InGameName#TagLine> <alias>")
+        msg.channel.send("The proper usage is ?add \"GameName#TagLine\" aliasForAccount")
       }
     }
 
@@ -1442,6 +1442,28 @@ bot.on('message', async function(msg) {
       }
       var table = buildAsciiTable("Current Users", ["Alias", "IGN"], data, false, false)
       msg.channel.send(table)
+    }
+
+    if(arg == "search"){
+      var searchTerm = args[1]
+      if(searchTerm != undefined){
+        var data = []
+        for (var subjectId in totalUserStats) {
+          // check if the property/key is defined in the object itself, not in parent
+          if (totalUserStats.hasOwnProperty(subjectId)) {
+            var userObj = totalUserStats[subjectId]
+            if(userObj["gameName"].toLowerCase().includes(searchTerm.toLowerCase())){
+              var name = userObj["gameName"]+"#"+userObj["tagLine"]
+              data.push(name)
+            }
+          }
+        }
+        if(data.length > 0){
+          msg.channel.send(buildAsciiTable("Found users:", ["IGN"], data))
+        }else{
+          msg.channel.send("None found.")
+        }
+      }
     }
 
     if(arg == "ban"){
@@ -1579,100 +1601,104 @@ function getUserAuth(username, password, completion){
 }
 
 function downloadMatchHistory(accessToken, entitlementsToken, computeStats, competitiveupdatesEndpointResult){
-
+  console.log("DL match historty")
   // this will download the matches that havent already been downloaded, and add it to
   var subject = competitiveupdatesEndpointResult["Subject"]
   var matchInfoData = competitiveupdatesEndpointResult["Matches"]
 
-  var matchInfoDict = {}
-  for(var i = 0; i < matchInfoData.length; i++){
-    matchInfoDict[matchInfoData[i]["MatchID"]] = matchInfoData[i]
-  }
-
-  if(matchesDownloadedData[subject] == undefined){
-    matchesDownloadedData[subject] = {}
-  }
-
-  if(matchHistoryData[subject] == undefined){
-    matchHistoryData[subject] = {
-      "Matches":{},
-      "MatchSort":[]
-    }
-  }
-
-  var matchDetailsPromises = matchInfoData.reduce(function (res, matchInfo) {
-    var matchId = matchInfo["MatchID"]
-    var matchStart = matchInfo["MatchStartTime"]
-    if(matchesDownloadedData[subject][matchId] == undefined && matchStart > 1610442000000){
-      const options = {
-          url: 'https://pd.na.a.pvp.net/match-details/v1/matches/'+matchId,
-          method: 'GET',
-          headers: {
-              "Content-Type": "application/json",
-              'Authorization': 'Bearer '+accessToken,
-              'X-Riot-Entitlements-JWT': entitlementsToken
-          },
-      };
-      var req = requestPromise(options)
-      res.push(req);
-    }
-    return res;
-  }, []);
-
-  Promise.all(matchDetailsPromises).then((allMatchData) => {
-    for(var i = 0; i < allMatchData.length; i++){
-      var matchData = JSON.parse(allMatchData[i])
-      var matchID = matchData["matchInfo"]["matchId"]
-      var queueID = matchData["matchInfo"]["queueID"]
-
-      var rawPath = rawMatchPath(matchID)
-      fs.writeFileSync(rawPath, JSON.stringify(matchData, null, 2), 'utf8');
-      matchesDownloadedData[subject][matchID] = 1
-      // console.log("Promise for download "+matchID)
-
-      matchHistoryData[subject]["Matches"][matchID] = matchInfoDict[matchID]
-
-      processMatchData(matchID, matchData, function(){
-        bot.channels.cache.get("798343660001165332").send("Processed and downloaded match "+matchID+" for user "+subject);
-      }, false)
+  if(matchInfoData != undefined){
+    var matchInfoDict = {}
+    for(var i = 0; i < matchInfoData.length; i++){
+      matchInfoDict[matchInfoData[i]["MatchID"]] = matchInfoData[i]
     }
 
-    if(computeStats){
-      doAllComputation()
+    if(matchesDownloadedData[subject] == undefined){
+      matchesDownloadedData[subject] = {}
     }
 
-    var matchItems = Object.keys(matchHistoryData[subject]["Matches"]).map(function(key) {
-      return [key, matchHistoryData[subject]["Matches"][key]];
+    if(matchHistoryData[subject] == undefined){
+      matchHistoryData[subject] = {
+        "Matches":{},
+        "MatchSort":[]
+      }
+    }
+
+    var matchDetailsPromises = matchInfoData.reduce(function (res, matchInfo) {
+      var matchId = matchInfo["MatchID"]
+      var matchStart = matchInfo["MatchStartTime"]
+      console.log("MDDDDDD "+matchId+"__"+(matchStart-1610442000000))
+      if(matchesDownloadedData[subject][matchId] == undefined && matchStart > 1610442000000){
+        const options = {
+            url: 'https://pd.na.a.pvp.net/match-details/v1/matches/'+matchId,
+            method: 'GET',
+            headers: {
+                "Content-Type": "application/json",
+                'Authorization': 'Bearer '+accessToken,
+                'X-Riot-Entitlements-JWT': entitlementsToken
+            },
+        };
+        console.log("DOWNLOAD MATCH "+matchId)
+        var req = requestPromise(options)
+        res.push(req);
+      }
+      return res;
+    }, []);
+
+    Promise.all(matchDetailsPromises).then((allMatchData) => {
+      for(var i = 0; i < allMatchData.length; i++){
+        var matchData = JSON.parse(allMatchData[i])
+        var matchID = matchData["matchInfo"]["matchId"]
+        var queueID = matchData["matchInfo"]["queueID"]
+
+        var rawPath = rawMatchPath(matchID)
+        fs.writeFileSync(rawPath, JSON.stringify(matchData, null, 2), 'utf8');
+        matchesDownloadedData[subject][matchID] = 1
+        // console.log("Promise for download "+matchID)
+
+        matchHistoryData[subject]["Matches"][matchID] = matchInfoDict[matchID]
+
+        processMatchData(matchID, matchData, function(){
+          bot.channels.cache.get("798343660001165332").send("Processed and downloaded match "+matchID+" for user "+subject);
+        }, false)
+      }
+
+      if(computeStats){
+        doAllComputation()
+      }
+
+      var matchItems = Object.keys(matchHistoryData[subject]["Matches"]).map(function(key) {
+        return [key, matchHistoryData[subject]["Matches"][key]];
+      });
+
+      // Sort the array based on the second element
+      matchItems.sort(function(firstObj, secondObj) {
+        var firstMatch = firstObj[1]
+        var secondMatch = secondObj[1]
+
+        return secondMatch["MatchStartTime"] - firstMatch["MatchStartTime"]
+      })
+
+      var matchSortArray = []
+      for(var i = 0; i < matchItems.length; i++){
+        var match = matchItems[i][1]
+        var matchId = match["MatchID"]
+        matchSortArray.push(matchId)
+      }
+
+      matchHistoryData[subject]["MatchSort"] = matchSortArray
+
+
+
+      fs.writeFileSync('private/matchHistory.json', JSON.stringify(matchHistoryData, null, 2), 'utf-8');
+      fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2), 'utf-8');
+
     });
-
-    // Sort the array based on the second element
-    matchItems.sort(function(firstObj, secondObj) {
-      var firstMatch = firstObj[1]
-      var secondMatch = secondObj[1]
-
-      return secondMatch["MatchStartTime"] - firstMatch["MatchStartTime"]
-    })
-
-    var matchSortArray = []
-    for(var i = 0; i < matchItems.length; i++){
-      var match = matchItems[i][1]
-      var matchId = match["MatchID"]
-      matchSortArray.push(matchId)
-    }
-
-    matchHistoryData[subject]["MatchSort"] = matchSortArray
-
-
-
-    fs.writeFileSync('private/matchHistory.json', JSON.stringify(matchHistoryData, null, 2), 'utf-8');
-    fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2), 'utf-8');
-
-  });
+  }
 }
 
 function updateUserElo(userId, accessToken, entitlementsToken, computeStats, dataCompletion){
   const options = {
-      url: 'https://pd.na.a.pvp.net/mmr/v1/players/'+userId+"/competitiveupdates",
+      url: 'https://pd.na.a.pvp.net/mmr/v1/players/'+userId+"/competitiveupdates?startIndex=0&endIndex=20",
       method: 'GET',
       headers: {
           "Content-Type": "application/json",
@@ -1715,7 +1741,10 @@ function rawMatchPath(matchID){
   return MATCHES_RAW_PATH+matchID+'.json'
 }
 
-function processMatchData(matchID, matchData, didProcess, forceProcess){
+function processMatchData(matchID, matchData, didProcess, forceProcess, processPath){
+  if(processPath == undefined){
+    processPath = MATCHES_PROCESSED_PATH
+  }
   if(processedMatchesData[matchID] == undefined){
     processedMatchesData[matchID] = {}
   }
@@ -1724,7 +1753,7 @@ function processMatchData(matchID, matchData, didProcess, forceProcess){
     // TODO for now only process competitive games.
     let matchStartTime = matchData["matchInfo"]["gameStartMillis"]
     if(matchData["matchInfo"]["queueID"] == "competitive"){
-      let folderPath = MATCHES_PROCESSED_PATH+matchID
+      let folderPath = processPath+matchID
       // console.log(folderPath)
       if (!fs.existsSync(folderPath)){
         console.log("Making folder "+folderPath)
