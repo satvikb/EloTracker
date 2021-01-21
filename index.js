@@ -20,8 +20,12 @@ let rawCacheData = fs.readFileSync('private/authCache.json');
 let rawContentData = fs.readFileSync('private/static/content.json');
 let rawMatchDownloads = fs.readFileSync('private/matchesDownloaded.json');
 let rawProcessedMatches = fs.readFileSync('private/processedMatches.json');
-// let rawCompHistory = fs.readFileSync('private/compHistory.json');
 let rawMatchHistory = fs.readFileSync('private/matchHistory.json');
+
+let rawLeaderboardMatchDownloads = fs.readFileSync('leaderboard/private/matchesDownloaded.json');
+let rawLeaderboardProcessedMatches = fs.readFileSync('leaderboard/private/processedMatches.json');
+let rawLeaderboardMatchHistory = fs.readFileSync('leaderboard/private/matchHistory.json');
+
 let rawSubjectIdAliases = fs.readFileSync('private/static/userIDs.json');
 
 let userColorsData = JSON.parse(rawUserColors);
@@ -31,6 +35,11 @@ let matchesDownloadedData = JSON.parse(rawMatchDownloads);
 let processedMatchesData = JSON.parse(rawProcessedMatches);
 // let compHistoryData = JSON.parse(rawCompHistory);
 let matchHistoryData = JSON.parse(rawMatchHistory);
+
+let leaderboardMatchesDownloadedData = JSON.parse(rawLeaderboardMatchDownloads);
+let leaderboardProcessedMatchesData = JSON.parse(rawLeaderboardProcessedMatches);
+let leaderboardMatchHistoryData = JSON.parse(rawLeaderboardMatchHistory);
+
 let subjectIdAliases = JSON.parse(rawSubjectIdAliases);
 
 let rawUserStats = fs.readFileSync('private/totalStats/users.json');
@@ -38,6 +47,13 @@ let rawHitsStats = fs.readFileSync('private/totalStats/hits.json');
 
 let totalUserStats = JSON.parse(rawUserStats);
 let totalHitsStats = JSON.parse(rawHitsStats);
+
+let leaderboardRawUserStats = fs.readFileSync('leaderboard/private/totalStats/users.json');
+let leaderboardRawHitsStats = fs.readFileSync('leaderboard/private/totalStats/hits.json');
+
+let leaderboardTotalUserStats = JSON.parse(leaderboardRawUserStats);
+let leaderboardTotalHitsStats = JSON.parse(leaderboardRawHitsStats);
+
 
 let PROCESSING_USER_ANALYSIS = "userAnalysis";
 let PROCESSING_HIT_ANALYSIS = "hitAnalysis";
@@ -47,6 +63,9 @@ let PROCESSING_DISTANCE_ANALYSIS = "distanceAnalysis";
 
 let MATCHES_RAW_PATH = "matches/raw/"
 let MATCHES_PROCESSED_PATH = "matches/processed/"
+
+let LEADERBOARD_MATCHES_RAW_PATH = "leaderboard/matches/raw/"
+let LEADERBOARD_MATCHES_PROCESSED_PATH = "leaderboard/matches/processed/"
 
 let CHART_TYPE_DAMAGE = "Damage"
 let CHART_TYPE_SCORE = "Score"
@@ -75,8 +94,6 @@ let EMOJI_COMP_DRAW = "<:rank_stable:797332889971720213>"
 
 let ELO_CHART_WIDTH = 700
 let EPISODE_2_START_TIME_MILLIS = 1610442000000
-
-let USERNAME_FOR_LEADERBOARD = "knife"
 
 var RANKS = {
   "0": "Unrated",
@@ -197,15 +214,31 @@ bot.on('message', async function(msg) {
                   // (elo before + 100) - (elo after)
                   eloChange = (RPAfter - RPBefore) - 100
                   eloSign = "-" // negative sign accounted for
+                  competitiveMovement = COMP_DEMOTED
                 }else{
                   // promote
                   //  (elo after + 100) - elo before
                   eloChange = (RPAfter - RPBefore) + 100
-
+                  competitiveMovement = COMP_PROMOTED
                 }
               }else{
                 // same
                 eloChange = RPAfter - RPBefore;
+                if(eloChange >= 30){
+                  competitiveMovement = COMP_INC_MAJOR
+                }else if(eloChange >= 20 && eloChange < 30){
+                  competitiveMovement = COMP_INCRASE
+                }else if(eloChange >= 10 && eloChange < 20){
+                  competitiveMovement = COMP_INC_MINOR
+                }else if(eloChange >= -10 && eloChange < 10){
+                  competitiveMovement = COMP_DRAW
+                }else if(eloChange >= -20 && eloChange < -10){
+                  competitiveMovement = COMP_DEC_MINOR
+                }else if(eloChange >= -30 && eloChange < -20){
+                  competitiveMovement = COMP_DECREASE
+                }else if(eloChange < -30){
+                  competitiveMovement = COMP_DEC_MAJOR
+                }
                 eloSign = eloChange < 0 ? "" : "+"
               }
               let eloChangeFromData = latestMatchJson["RankedRatingEarned"]
@@ -392,11 +425,7 @@ bot.on('message', async function(msg) {
       return {"dates":dateArray, "elo":eloArray}
     }
 
-    function sleep(ms) {
-      return new Promise((resolve) => {
-        setTimeout(resolve, ms);
-      });
-    }
+
 
     function analyzeMatchRoundData(matchID, analysisType){
       var dataFilePath = MATCHES_PROCESSED_PATH + matchID + "/roundStats.json"
@@ -950,17 +979,7 @@ bot.on('message', async function(msg) {
     }
 
     function getGlobalLeaderboard(page, accessToken, entitlementsToken, completion){
-      const options = {
-          url: "https://pd.na.a.pvp.net/mmr/v1/leaderboards/affinity/na/queue/competitive/season/97b6e739-44cc-ffa7-49ad-398ba502ceb0",
-          method: 'GET',
-          headers: {
-              "Content-Type": "application/json",
-              'Authorization': 'Bearer '+accessToken,
-              'X-Riot-Entitlements-JWT': entitlementsToken,
-              'X-Riot-ClientPlatform':"ewogICAgInBsYXRmb3JtVHlwZSI6ICJQQyIsCiAgICAicGxhdGZvcm1PUyI6ICJXaW5kb3dzIiwKICAgICJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwKICAgICJwbGF0Zm9ybUNoaXBzZXQiOiAiVW5rbm93biIKfQ=="
-          },
-      };
-
+      var options = apiCallOptions(accessToken, entitlementsToken,  "https://pd.na.a.pvp.net/mmr/v1/leaderboards/affinity/na/queue/competitive/season/97b6e739-44cc-ffa7-49ad-398ba502ceb0")
       var tableData = []
       request(options, async function(err, res, body) {
         var leaderboardData = JSON.parse(body)
@@ -1339,7 +1358,47 @@ bot.on('message', async function(msg) {
           msg.channel.send(table)
         })
       })
+    }
 
+    if(arg == "gettopdata"){
+      getUserAuth(process.env.VAL_USERNAME, process.env.PASSWORD, async function(creds){
+        let userId = creds["userId"];
+        let entitlementsToken = creds["entitlementsToken"];
+        let accessToken = creds["accessToken"];
+        let expiryTime = creds["expiry"];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        var options = apiCallOptions(accessToken, entitlementsToken,  "https://pd.na.a.pvp.net/mmr/v1/leaderboards/affinity/na/queue/competitive/season/97b6e739-44cc-ffa7-49ad-398ba502ceb0")
+        var tableData = []
+        request(options, async function(err, res, body) {
+          var leaderboardData = JSON.parse(body)
+          var leaderboardPlayersAll = leaderboardData["Players"]
+          for(var i = 0; i < leaderboardPlayersAll.length; i++){
+            var player = leaderboardPlayersAll[i]
+            var subject = player["Subject"]
+            console.log("LB DL "+subject+":: #"+player["LeaderboardRank"]+", "+player["GameName"])
+            updateUserElo(subject, accessToken, entitlementsToken, true, null, true, true)
+            await sleep(20000)
+          }
+        })
+      })
     }
 
     if(arg == "damage" || arg == "score" || arg == "carry"){// || arg == "analyze"){
@@ -1501,6 +1560,21 @@ bot.on('message', async function(msg) {
     }
 });
 
+function apiCallOptions(accessToken, entitlementsToken, url){
+  const options = {
+      url: url,
+      method: 'GET',
+      headers: {
+          "Content-Type": "application/json",
+          'Authorization': 'Bearer '+accessToken,
+          'X-Riot-Entitlements-JWT': entitlementsToken,
+          'X-Riot-ClientPlatform':"ewogICAgInBsYXRmb3JtVHlwZSI6ICJQQyIsCiAgICAicGxhdGZvcm1PUyI6ICJXaW5kb3dzIiwKICAgICJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwKICAgICJwbGF0Zm9ybUNoaXBzZXQiOiAiVW5rbm93biIKfQ==",
+          'X-Riot-ClientVersion':'release-02.01-shipping-6-511946'
+      },
+  };
+  return options
+}
+
 function getUserAuth(username, password, completion){
   console.log("Get auth "+username)
   var userAuthCache = authCacheData[username]
@@ -1600,8 +1674,8 @@ function getUserAuth(username, password, completion){
   }
 }
 
-function downloadMatchHistory(accessToken, entitlementsToken, computeStats, competitiveupdatesEndpointResult){
-  console.log("DL match historty")
+function downloadMatchHistory(accessToken, entitlementsToken, computeStats, competitiveupdatesEndpointResult, useLeaderboardStats){
+  // console.log("DL match historty")
   // this will download the matches that havent already been downloaded, and add it to
   var subject = competitiveupdatesEndpointResult["Subject"]
   var matchInfoData = competitiveupdatesEndpointResult["Matches"]
@@ -1612,36 +1686,53 @@ function downloadMatchHistory(accessToken, entitlementsToken, computeStats, comp
       matchInfoDict[matchInfoData[i]["MatchID"]] = matchInfoData[i]
     }
 
-    if(matchesDownloadedData[subject] == undefined){
-      matchesDownloadedData[subject] = {}
-    }
-
-    if(matchHistoryData[subject] == undefined){
-      matchHistoryData[subject] = {
-        "Matches":{},
-        "MatchSort":[]
+    if(!useLeaderboardStats){
+      if(matchesDownloadedData[subject] == undefined){
+        matchesDownloadedData[subject] = {}
+      }
+    }else{
+      if(leaderboardMatchesDownloadedData[subject] == undefined){
+        leaderboardMatchesDownloadedData[subject] = {}
       }
     }
 
+    if(!useLeaderboardStats){
+      if(matchHistoryData[subject] == undefined){
+        matchHistoryData[subject] = {
+          "Matches":{},
+          "MatchSort":[]
+        }
+      }
+    }else{
+      if(leaderboardMatchHistoryData[subject] == undefined){
+        leaderboardMatchHistoryData[subject] = {
+          "Matches":{},
+          "MatchSort":[]
+        }
+      }
+    }
+    function delay(t) {
+      return new Promise(function(resolve) {
+        setTimeout(resolve, t);
+      });
+    }
     var matchDetailsPromises = matchInfoData.reduce(function (res, matchInfo) {
       var matchId = matchInfo["MatchID"]
       var matchStart = matchInfo["MatchStartTime"]
-      console.log("MDDDDDD "+matchId+"__"+(matchStart-1610442000000))
-      if(matchesDownloadedData[subject][matchId] == undefined && matchStart > 1610442000000){
-        const options = {
-            url: 'https://pd.na.a.pvp.net/match-details/v1/matches/'+matchId,
-            method: 'GET',
-            headers: {
-                "Content-Type": "application/json",
-                'Authorization': 'Bearer '+accessToken,
-                'X-Riot-Entitlements-JWT': entitlementsToken,
-                'X-Riot-ClientPlatform':"ewogICAgInBsYXRmb3JtVHlwZSI6ICJQQyIsCiAgICAicGxhdGZvcm1PUyI6ICJXaW5kb3dzIiwKICAgICJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwKICAgICJwbGF0Zm9ybUNoaXBzZXQiOiAiVW5rbm93biIKfQ=="
-            },
-        };
-        console.log("DOWNLOAD MATCH "+matchId)
-        var req = requestPromise(options)
-        res.push(req);
+      var options = apiCallOptions(accessToken, entitlementsToken, 'https://pd.na.a.pvp.net/match-details/v1/matches/'+matchId)
+
+      if(!useLeaderboardStats){
+        if(matchesDownloadedData[subject][matchId] == undefined && matchStart > 1610442000000){
+          var req = requestPromise(options)
+          res.push(req);
+        }
+      }else{
+        if(leaderboardMatchesDownloadedData[subject][matchId] == undefined && matchStart > 1610442000000){
+          var req = requestPromise(options)
+          res.push(req, delay(500));
+        }
       }
+
       return res;
     }, []);
 
@@ -1651,143 +1742,229 @@ function downloadMatchHistory(accessToken, entitlementsToken, computeStats, comp
         var matchID = matchData["matchInfo"]["matchId"]
         var queueID = matchData["matchInfo"]["queueID"]
 
-        var rawPath = rawMatchPath(matchID)
+        var rawPath;
+        if(!useLeaderboardStats){
+          rawPath = rawMatchPath(matchID)
+        }else{
+          rawPath = leaderboardRawMatchPath(matchID)
+        }
         fs.writeFileSync(rawPath, JSON.stringify(matchData, null, 2), 'utf8');
-        matchesDownloadedData[subject][matchID] = 1
-        // console.log("Promise for download "+matchID)
 
-        matchHistoryData[subject]["Matches"][matchID] = matchInfoDict[matchID]
+        if(!useLeaderboardStats){
+          matchesDownloadedData[subject][matchID] = 1
+        }else{
+          leaderboardMatchesDownloadedData[subject][matchID] = 1
+        }
+        // console.log("Promise for download "+matchID)
+        if(!useLeaderboardStats){
+          matchHistoryData[subject]["Matches"][matchID] = matchInfoDict[matchID]
+        }else{
+          leaderboardMatchHistoryData[subject]["Matches"][matchID] = matchInfoDict[matchID]
+        }
 
         processMatchData(matchID, matchData, function(){
-          bot.channels.cache.get("798343660001165332").send("Processed and downloaded match "+matchID+" for user "+subject);
-        }, false)
+          if(!useLeaderboardStats){
+            bot.channels.cache.get("798343660001165332").send("Processed and downloaded match "+matchID+" for user "+subject);
+          }else{
+            bot.channels.cache.get("798343660001165332").send("Processed and downloaded match "+matchID+" for LEADERBOARD user "+subject);
+          }
+        }, false, useLeaderboardStats)
       }
 
       if(computeStats){
-        doAllComputation()
+        doAllComputation(useLeaderboardStats)
       }
 
-      var matchItems = Object.keys(matchHistoryData[subject]["Matches"]).map(function(key) {
-        return [key, matchHistoryData[subject]["Matches"][key]];
-      });
+      if(!useLeaderboardStats){
+        var matchItems = Object.keys(matchHistoryData[subject]["Matches"]).map(function(key) {
+          return [key, matchHistoryData[subject]["Matches"][key]];
+        });
 
-      // Sort the array based on the second element
-      matchItems.sort(function(firstObj, secondObj) {
-        var firstMatch = firstObj[1]
-        var secondMatch = secondObj[1]
+        // Sort the array based on the second element
+        matchItems.sort(function(firstObj, secondObj) {
+          var firstMatch = firstObj[1]
+          var secondMatch = secondObj[1]
 
-        return secondMatch["MatchStartTime"] - firstMatch["MatchStartTime"]
-      })
+          return secondMatch["MatchStartTime"] - firstMatch["MatchStartTime"]
+        })
+        var matchSortArray = []
+        for(var i = 0; i < matchItems.length; i++){
+          var match = matchItems[i][1]
+          var matchId = match["MatchID"]
+          matchSortArray.push(matchId)
+        }
+        matchHistoryData[subject]["MatchSort"] = matchSortArray
+        fs.writeFileSync('private/matchHistory.json', JSON.stringify(matchHistoryData, null, 2), 'utf-8');
+        fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2), 'utf-8');
+      }else{
+        var matchItems = Object.keys(leaderboardMatchHistoryData[subject]["Matches"]).map(function(key) {
+          return [key, leaderboardMatchHistoryData[subject]["Matches"][key]];
+        });
 
-      var matchSortArray = []
-      for(var i = 0; i < matchItems.length; i++){
-        var match = matchItems[i][1]
-        var matchId = match["MatchID"]
-        matchSortArray.push(matchId)
+        // Sort the array based on the second element
+        matchItems.sort(function(firstObj, secondObj) {
+          var firstMatch = firstObj[1]
+          var secondMatch = secondObj[1]
+
+          return secondMatch["MatchStartTime"] - firstMatch["MatchStartTime"]
+        })
+        var matchSortArray = []
+        for(var i = 0; i < matchItems.length; i++){
+          var match = matchItems[i][1]
+          var matchId = match["MatchID"]
+          matchSortArray.push(matchId)
+        }
+        leaderboardMatchHistoryData[subject]["MatchSort"] = matchSortArray
+        fs.writeFileSync('leaderboard/private/matchHistory.json', JSON.stringify(leaderboardMatchHistoryData, null, 2), 'utf-8');
+        fs.writeFileSync('leaderboard/private/matchesDownloaded.json', JSON.stringify(leaderboardMatchesDownloadedData, null, 2), 'utf-8');
       }
-
-      matchHistoryData[subject]["MatchSort"] = matchSortArray
-
-
-
-      fs.writeFileSync('private/matchHistory.json', JSON.stringify(matchHistoryData, null, 2), 'utf-8');
-      fs.writeFileSync('private/matchesDownloaded.json', JSON.stringify(matchesDownloadedData, null, 2), 'utf-8');
-
     });
   }
 }
 
-function updateUserElo(userId, accessToken, entitlementsToken, computeStats, dataCompletion){
-  const options = {
-      url: 'https://pd.na.a.pvp.net/mmr/v1/players/'+userId+"/competitiveupdates?startIndex=0&endIndex=20",
-      method: 'GET',
-      headers: {
-          "Content-Type": "application/json",
-          'Authorization': 'Bearer '+accessToken,
-          'X-Riot-Entitlements-JWT': entitlementsToken,
-          'X-Riot-ClientPlatform':"ewogICAgInBsYXRmb3JtVHlwZSI6ICJQQyIsCiAgICAicGxhdGZvcm1PUyI6ICJXaW5kb3dzIiwKICAgICJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwKICAgICJwbGF0Zm9ybUNoaXBzZXQiOiAiVW5rbm93biIKfQ=="
-      },
-  };
-
-  console.log("Updating user Elo For ID "+userId)
-  request(options, async function(err, res, body) {
-    let json = JSON.parse(body);
-
-    downloadMatchHistory(accessToken, entitlementsToken, computeStats, json)
-    dataCompletion(json)
-  })
-}
-
-function downloadMatchData(accessToken, entitlementsToken, matchID, downloadCompletion){
-  const options = {
-      url: 'https://pd.na.a.pvp.net/match-details/v1/matches/'+matchID,
-      method: 'GET',
-      headers: {
-          "Content-Type": "application/json",
-          'Authorization': 'Bearer '+accessToken,
-          'X-Riot-Entitlements-JWT': entitlementsToken,
-          'X-Riot-ClientPlatform':"ewogICAgInBsYXRmb3JtVHlwZSI6ICJQQyIsCiAgICAicGxhdGZvcm1PUyI6ICJXaW5kb3dzIiwKICAgICJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwKICAgICJwbGF0Zm9ybUNoaXBzZXQiOiAiVW5rbm93biIKfQ=="
-      },
-  };
-  request(options, function(err, res, body) {
-    fs.writeFile(rawMatchPath(matchID), body, 'utf8', function (err) {
-        if (err) {
-          console.log(err);
-        }else{
-          downloadCompletion(matchID, JSON.parse(body))
-        }
+function updateUserElo(userId, accessToken, entitlementsToken, computeStats, dataCompletion, getEntireHistory, useLeaderboardStats){
+  if(!getEntireHistory){
+    var options = apiCallOptions(accessToken, entitlementsToken, 'https://pd.na.a.pvp.net/mmr/v1/players/'+userId+"/competitiveupdates?startIndex=0&endIndex=20")
+    request(options, async function(err, res, body) {
+      let json = JSON.parse(body);
+      downloadMatchHistory(accessToken, entitlementsToken, computeStats, json)
+      dataCompletion(json)
     });
-  });
+  }else{
+    // page results and download all of them. This will not call dataCompletion()
+    var matchHistoryOptions = apiCallOptions(accessToken, entitlementsToken, "https://pd.na.a.pvp.net/match-history/v1/history/"+userId)
+    request(matchHistoryOptions, async function(err, res, historyBody) {
+      let json = JSON.parse(historyBody);
+      /*
+      json = {"Subject":"","BeginIndex":50,"EndIndex":60,"Total":87,"History":[{"MatchID":"012fa04c-e0e2-47f8-aa51-922f02a2d597","GameStartTime":1610246388028,"TeamID":"Blue"}
+
+      */
+      let matchTotal = json["Total"]
+      var currentStart = 0;
+      var currentEnd = 20;
+
+      var res = []
+      while(currentEnd < matchTotal){
+        if(currentStart+20 >= matchTotal){
+          currentEnd = matchTotal
+        }
+
+        var options = apiCallOptions(accessToken, entitlementsToken,
+          'https://pd.na.a.pvp.net/mmr/v1/players/'+userId+"/competitiveupdates?startIndex="+currentStart+"&endIndex="+currentEnd)
+
+        currentStart += 20
+        currentEnd += 20
+
+        console.log("Requesting "+options.url)
+        var req = requestPromise(options)
+        res.push(req);
+      }
+
+
+      Promise.all(res).then(async (allUpdateData) => {
+        for(var i = 0; i < allUpdateData.length; i++){
+          var updateData = JSON.parse(allUpdateData[i])
+          console.log("Downloading "+(i*20)+"-"+((i+1)*20))
+          downloadMatchHistory(accessToken, entitlementsToken, computeStats, updateData, useLeaderboardStats)
+          await sleep(3000)
+        }
+      })
+
+
+
+
+    });
+  }
 }
 
 function rawMatchPath(matchID){
   return MATCHES_RAW_PATH+matchID+'.json'
 }
 
-function processMatchData(matchID, matchData, didProcess, forceProcess, processPath){
-  if(processPath == undefined){
-    processPath = MATCHES_PROCESSED_PATH
-  }
-  if(processedMatchesData[matchID] == undefined){
-    processedMatchesData[matchID] = {}
+function leaderboardRawMatchPath(matchID){
+  return LEADERBOARD_MATCHES_RAW_PATH+matchID+'.json'
+}
+
+function processMatchData(matchID, matchData, didProcess, forceProcess, useLeaderboardStats){
+  if(!useLeaderboardStats){
+    if(processedMatchesData[matchID] == undefined){
+      processedMatchesData[matchID] = {}
+    }
+  }else{
+    if(leaderboardProcessedMatchesData[matchID] == undefined){
+      leaderboardProcessedMatchesData[matchID] = {}
+    }
   }
 
   try{
     // TODO for now only process competitive games.
     let matchStartTime = matchData["matchInfo"]["gameStartMillis"]
     if(matchData["matchInfo"]["queueID"] == "competitive"){
-      let folderPath = processPath+matchID
+      let folderPath;
+      if(!useLeaderboardStats){
+        folderPath = MATCHES_PROCESSED_PATH+matchID
+      } else{
+        folderPath = LEADERBOARD_MATCHES_RAW_PATH+matchID
+      }
       // console.log(folderPath)
       if (!fs.existsSync(folderPath)){
         console.log("Making folder "+folderPath)
         fs.mkdirSync(folderPath);
       }
 
-      processedMatchesData[matchID]["gameStartMillis"] = matchStartTime
-      var didProcessMatch = false;
-      if(processedMatchesData[matchID][PROCESSING_HIT_ANALYSIS] == undefined || forceProcess){
-        processMatchHitAnalysis(folderPath, matchData)
-        processedMatchesData[matchID][PROCESSING_HIT_ANALYSIS] = 1;
-        didProcessMatch = true;
-      }
+      if(!useLeaderboardStats){
+        processedMatchesData[matchID]["gameStartMillis"] = matchStartTime
+        var didProcessMatch = false;
+        if(processedMatchesData[matchID][PROCESSING_HIT_ANALYSIS] == undefined || forceProcess){
+          processMatchHitAnalysis(folderPath, matchData)
+          processedMatchesData[matchID][PROCESSING_HIT_ANALYSIS] = 1;
+          didProcessMatch = true;
+        }
 
-      if(processedMatchesData[matchID][PROCESSING_USER_ANALYSIS] == undefined || forceProcess){
-        processMatchUserAnalysis(folderPath, matchData)
-        processedMatchesData[matchID][PROCESSING_USER_ANALYSIS] = 1;
-        didProcessMatch = true;
-      }
+        if(processedMatchesData[matchID][PROCESSING_USER_ANALYSIS] == undefined || forceProcess){
+          processMatchUserAnalysis(folderPath, matchData)
+          processedMatchesData[matchID][PROCESSING_USER_ANALYSIS] = 1;
+          didProcessMatch = true;
+        }
 
-      if(processedMatchesData[matchID][PROCESSING_ROUND_ANALYSIS] == undefined || forceProcess){
-        processMatchRoundsAnalysis(folderPath, matchData)
-        processedMatchesData[matchID][PROCESSING_ROUND_ANALYSIS] = 1;
-        didProcessMatch = true;
+        if(processedMatchesData[matchID][PROCESSING_ROUND_ANALYSIS] == undefined || forceProcess){
+          processMatchRoundsAnalysis(folderPath, matchData)
+          processedMatchesData[matchID][PROCESSING_ROUND_ANALYSIS] = 1;
+          didProcessMatch = true;
+        }
+        // console.log("")
+        if(didProcessMatch == true){
+          didProcess()
+        }
+        fs.writeFileSync('private/processedMatches.json', JSON.stringify(processedMatchesData, null, 2) , 'utf-8');
+        console.log("Handled "+folderPath+", processed: "+didProcessMatch)
+      }else{
+        leaderboardProcessedMatchesData[matchID]["gameStartMillis"] = matchStartTime
+        var didProcessMatch = false;
+        if(leaderboardProcessedMatchesData[matchID][PROCESSING_HIT_ANALYSIS] == undefined || forceProcess){
+          processMatchHitAnalysis(folderPath, matchData)
+          leaderboardProcessedMatchesData[matchID][PROCESSING_HIT_ANALYSIS] = 1;
+          didProcessMatch = true;
+        }
+
+        if(leaderboardProcessedMatchesData[matchID][PROCESSING_USER_ANALYSIS] == undefined || forceProcess){
+          processMatchUserAnalysis(folderPath, matchData)
+          leaderboardProcessedMatchesData[matchID][PROCESSING_USER_ANALYSIS] = 1;
+          didProcessMatch = true;
+        }
+
+        if(leaderboardProcessedMatchesData[matchID][PROCESSING_ROUND_ANALYSIS] == undefined || forceProcess){
+          processMatchRoundsAnalysis(folderPath, matchData)
+          leaderboardProcessedMatchesData[matchID][PROCESSING_ROUND_ANALYSIS] = 1;
+          didProcessMatch = true;
+        }
+        // console.log("")
+        if(didProcessMatch == true){
+          didProcess()
+        }
+        fs.writeFileSync('leaderboard/private/processedMatches.json', JSON.stringify(leaderboardProcessedMatchesData, null, 2) , 'utf-8');
+        console.log("Handled "+folderPath+", processed: "+didProcessMatch)
       }
-      // console.log("")
-      if(didProcessMatch == true){
-        didProcess()
-      }
-      fs.writeFileSync('private/processedMatches.json', JSON.stringify(processedMatchesData, null, 2) , 'utf-8');
-      console.log("Handled "+folderPath+", processed: "+didProcessMatch)
     }
   }catch(err){
      // bad game
@@ -2114,10 +2291,17 @@ function processMatchRoundsAnalysis(folderPath, matchData){
   fs.writeFileSync(folderPath+'/roundStats.json', JSON.stringify(allRoundDataFinal, null, 2) , 'utf-8');
 }
 
-function computeTotalHits(){
+function computeTotalHits(useLeaderboardStats){
   var hitsData = {}
 
-  fs.readdir(MATCHES_PROCESSED_PATH, function(err, filenames) {
+  var processedPath;
+  if(!useLeaderboardStats){
+    processedPath = MATCHES_PROCESSED_PATH
+  }else{
+    processedPath = LEADERBOARD_MATCHES_PROCESSED_PATH
+  }
+
+  fs.readdir(processedPath, function(err, filenames) {
     if (err) {
       onError(err);
       return;
@@ -2127,7 +2311,7 @@ function computeTotalHits(){
         let matchId = filename
 
         // TODO find a way to only process comps
-        let rawHitsData = fs.readFileSync(MATCHES_PROCESSED_PATH + filename + "/hits.json");
+        let rawHitsData = fs.readFileSync(processedPath + filename + "/hits.json");
         let matchHitsData = JSON.parse(rawHitsData)
 
         for (var subject in matchHitsData) {
@@ -2150,25 +2334,36 @@ function computeTotalHits(){
       }catch{
 
       }
-
     });
-    totalHitsStats = hitsData;
-    fs.writeFileSync('private/totalStats/hits.json', JSON.stringify(hitsData, null, 2) , 'utf-8');
+    if(!useLeaderboardStats){
+      totalHitsStats = hitsData;
+      fs.writeFileSync('private/totalStats/hits.json', JSON.stringify(hitsData, null, 2) , 'utf-8');
+    }else{
+      leaderboardTotalHitsStats = hitsData
+      fs.writeFileSync('leaderboard/private/totalStats/hits.json', JSON.stringify(hitsData, null, 2) , 'utf-8');
+    }
   });
 }
 
 // build aliases
-function computeTotalUsers(){
+function computeTotalUsers(useLeaderboardStats){
   var playerData = {}
 
-  fs.readdir(MATCHES_PROCESSED_PATH, function(err, filenames) {
+  var processedPath;
+  if(!useLeaderboardStats){
+    processedPath = MATCHES_PROCESSED_PATH
+  }else{
+    processedPath = LEADERBOARD_MATCHES_PROCESSED_PATH
+  }
+
+  fs.readdir(processedPath, function(err, filenames) {
     if (err) {
       onError(err);
       return;
     }
     filenames.forEach(function(filename) {
       try {
-        let rawUsersData = fs.readFileSync(MATCHES_PROCESSED_PATH + filename + "/users.json");
+        let rawUsersData = fs.readFileSync(processedPath + filename + "/users.json");
         let matchUsersData = JSON.parse(rawUsersData)["users"]
 
         for (var subject in matchUsersData) {
@@ -2216,15 +2411,27 @@ function computeTotalUsers(){
       }
 
     });
-    totalUserStats = playerData
-    fs.writeFileSync('private/totalStats/users.json', JSON.stringify(playerData, null, 2) , 'utf-8');
+    if(!useLeaderboardStats){
+      totalUserStats = playerData
+      fs.writeFileSync('private/totalStats/users.json', JSON.stringify(playerData, null, 2) , 'utf-8');
+    }else{
+      leaderboardTotalUserStats = playerData
+      fs.writeFileSync('leaderboard/private/totalStats/users.json', JSON.stringify(playerData, null, 2) , 'utf-8');
+    }
+
   });
 }
 
-function doAllComputation(){
-  computeTotalHits()
-  computeTotalUsers()
-  bot.channels.cache.get("798343660001165332").send("Computed all stats.");
+function doAllComputation(useLeaderboardStats){
+  computeTotalHits(useLeaderboardStats)
+  computeTotalUsers(useLeaderboardStats)
+  bot.channels.cache.get("798343660001165332").send("Computed all stats. For leaderboard users: "+useLeaderboardStats);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 cron.schedule('55 * * * *', () => {
