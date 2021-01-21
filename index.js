@@ -957,7 +957,7 @@ bot.on('message', async function(msg) {
               "Content-Type": "application/json",
               'Authorization': 'Bearer '+accessToken,
               'X-Riot-Entitlements-JWT': entitlementsToken,
-              'X-Riot-ClientVersion':"release-02.00-shipping-16-508517"
+              'X-Riot-ClientPlatform':"ewogICAgInBsYXRmb3JtVHlwZSI6ICJQQyIsCiAgICAicGxhdGZvcm1PUyI6ICJXaW5kb3dzIiwKICAgICJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwKICAgICJwbGF0Zm9ybUNoaXBzZXQiOiAiVW5rbm93biIKfQ=="
           },
       };
 
@@ -1634,7 +1634,8 @@ function downloadMatchHistory(accessToken, entitlementsToken, computeStats, comp
             headers: {
                 "Content-Type": "application/json",
                 'Authorization': 'Bearer '+accessToken,
-                'X-Riot-Entitlements-JWT': entitlementsToken
+                'X-Riot-Entitlements-JWT': entitlementsToken,
+                'X-Riot-ClientPlatform':"ewogICAgInBsYXRmb3JtVHlwZSI6ICJQQyIsCiAgICAicGxhdGZvcm1PUyI6ICJXaW5kb3dzIiwKICAgICJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwKICAgICJwbGF0Zm9ybUNoaXBzZXQiOiAiVW5rbm93biIKfQ=="
             },
         };
         console.log("DOWNLOAD MATCH "+matchId)
@@ -1703,7 +1704,8 @@ function updateUserElo(userId, accessToken, entitlementsToken, computeStats, dat
       headers: {
           "Content-Type": "application/json",
           'Authorization': 'Bearer '+accessToken,
-          'X-Riot-Entitlements-JWT': entitlementsToken
+          'X-Riot-Entitlements-JWT': entitlementsToken,
+          'X-Riot-ClientPlatform':"ewogICAgInBsYXRmb3JtVHlwZSI6ICJQQyIsCiAgICAicGxhdGZvcm1PUyI6ICJXaW5kb3dzIiwKICAgICJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwKICAgICJwbGF0Zm9ybUNoaXBzZXQiOiAiVW5rbm93biIKfQ=="
       },
   };
 
@@ -1723,7 +1725,8 @@ function downloadMatchData(accessToken, entitlementsToken, matchID, downloadComp
       headers: {
           "Content-Type": "application/json",
           'Authorization': 'Bearer '+accessToken,
-          'X-Riot-Entitlements-JWT': entitlementsToken
+          'X-Riot-Entitlements-JWT': entitlementsToken,
+          'X-Riot-ClientPlatform':"ewogICAgInBsYXRmb3JtVHlwZSI6ICJQQyIsCiAgICAicGxhdGZvcm1PUyI6ICJXaW5kb3dzIiwKICAgICJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwKICAgICJwbGF0Zm9ybUNoaXBzZXQiOiAiVW5rbm93biIKfQ=="
       },
   };
   request(options, function(err, res, body) {
