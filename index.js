@@ -27,6 +27,7 @@ let rawLeaderboardProcessedMatches = fs.readFileSync('leaderboard/private/proces
 let rawLeaderboardMatchHistory = fs.readFileSync('leaderboard/private/matchHistory.json');
 
 let rawSubjectIdAliases = fs.readFileSync('private/static/userIDs.json');
+let rawAltIds = fs.readFileSync('private/static/alts.json');
 
 let userColorsData = JSON.parse(rawUserColors);
 let authCacheData = JSON.parse(rawCacheData);
@@ -42,6 +43,7 @@ let leaderboardProcessedMatchesData = JSON.parse(rawLeaderboardProcessedMatches)
 let leaderboardMatchHistoryData = JSON.parse(rawLeaderboardMatchHistory);
 
 let subjectIdAliases = JSON.parse(rawSubjectIdAliases);
+let altData = JSON.parse(rawAltIds);
 
 let rawUserStats = fs.readFileSync('private/totalStats/users.json');
 let rawHitsStats = fs.readFileSync('private/totalStats/hits.json');
@@ -124,6 +126,11 @@ var RANKS = {
   "24": "Radiant"
 }
 
+var AGENT_NAMES = {}
+for (var i = 0; i < contentData["Characters"].length; i++) {
+  AGENT_NAMES[contentData["Characters"][i]["ID"].toLowerCase()] = contentData["Characters"][i]["Name"]
+}
+
 bot.on('ready', function() {
     console.log("It's Working");
     bot.user.setStatus("Invisible");
@@ -154,6 +161,7 @@ bot.on('message', async function(msg) {
     }
 
     function displayUserElo(userId, accessToken, entitlementsToken){
+      console.log("show "+userId)
       updateUserElo(userId, accessToken, entitlementsToken, true, async function(json){
         let matchData = json["Matches"]
         matchData.sort((a, b) => (a["MatchStartTime"] > b["MatchStartTime"]) ? -1 : 1)
@@ -192,6 +200,11 @@ bot.on('message', async function(msg) {
 
         var numMatchesToShow = Math.min(numToShow, numOfCompMatchesAvailable)
         var compGamesShowed = 0
+        console.log("Num to show: "+numMatchesToShow+"__"+numToShow+"__"+numOfCompMatchesAvailable)
+
+        var useAlternateDisplayMethod = numMatchesToShow > 20 // discord has hard limit on embeds
+        var alternateDisplayEmbeds = []
+        var GAMES_PER_FIELD = 15;
 
         var embedFieldArray = []
         for(var i = 0; i < matchData.length; i++){
@@ -299,6 +312,17 @@ bot.on('message', async function(msg) {
               var embedFieldObject = {name:compMovementEmoji+"**"+eloSign+eloChange+extraElo, value:fieldDay+endString, inline: debugMode ? false : true}
               embedFieldArray.push(embedFieldObject)
 
+              if(useAlternateDisplayMethod){
+                var currentEmbed = Math.floor((i / GAMES_PER_FIELD))+1; // 30 games per embed
+                if(alternateDisplayEmbeds.length < currentEmbed){
+                  // new embed
+                  var embedFieldObject = {name: "Games "+(currentEmbed-1)*GAMES_PER_FIELD+" to "+(currentEmbed*GAMES_PER_FIELD), value: "", inline: false}
+                  alternateDisplayEmbeds.push(embedFieldObject)
+                }
+
+                alternateDisplayEmbeds[currentEmbed-1].value += compMovementEmoji+"**"+eloSign+eloChange+extraElo+", "+fieldDay+endString+"\n"
+              }
+
               compGamesShowed += 1
             }else{
               // numMatchesToShow += 1
@@ -344,9 +368,10 @@ bot.on('message', async function(msg) {
 
         if(numMatchesToShow > 0){
           embed.addField('Competitive history for the last '+compGamesShowed+" matches:", "⠀", false)
-          .addFields(embedFieldArray)
+          .addFields(useAlternateDisplayMethod ? alternateDisplayEmbeds : embedFieldArray)
         }
 
+        console.log("sending elo for "+userNameHistory)
         var sentEmbed = await msg.channel.send({embed});
 
 
@@ -970,6 +995,83 @@ bot.on('message', async function(msg) {
       return [playtimeTable, killsTable, scoresTable, hsTable] // TODO return more leaderboards
     }
 
+    function playtimeWithAlts(allTypes, completion){
+
+      // this list will not contain alt accounts
+      var finalPlaytime = {
+        // "userId":{
+        //   "playtime":0,
+        //   "games":0
+        // }
+      }
+
+      function getAltFiltered(idToTest){
+        var pId = idToTest
+
+        for (var alias in altData) {
+          // check if the property/key is defined in the object itself, not in parent
+          if (altData.hasOwnProperty(alias)) {
+            var alts = altData[alias]
+            if(alts.includes(pId)){
+              // associate this game party account with the main of alias
+              var mainId = subjectIdAliases[alias]
+              return mainId
+            }
+          }
+        }
+        return idToTest
+      }
+
+      readAllRawMatchData(function(matchId, matchData){
+        var qType = matchData["matchInfo"]["queueID"]
+
+        if(allTypes || (!allTypes && qType == "competitive")){
+          var players = matchData["players"]
+
+          var playtime = matchData["matchInfo"]["gameLengthMillis"]
+
+          for(var p = 0; p < players.length; p++){
+            var player = players[p]
+            var userId = player["subject"]
+
+            var nId = getAltFiltered(userId)
+            if(finalPlaytime[nId] == undefined){
+              var userObj = {
+                "playtime":0,
+                "games":0
+              }
+              finalPlaytime[nId] = userObj
+            }
+
+            var userObj = {
+              "playtime":finalPlaytime[nId]["playtime"]+playtime,
+              "games":finalPlaytime[nId]["games"]+1
+            }
+            finalPlaytime[nId] = userObj
+          }
+        }
+      }, function(){
+
+        var playtimeItems = Object.keys(finalPlaytime).map(function(key) {
+          return [key, finalPlaytime[key]];
+        });
+
+        playtimeItems.sort(function(firstObj, secondObj) {
+          firstObj.push(firstObj[1]["playtime"])
+          secondObj.push(secondObj[1]["playtime"])
+
+          return secondObj[1]["playtime"] - firstObj[1]["playtime"]
+        })
+        var toPrintPlaytime = playtimeItems.slice(0, 30)
+        // console.log(JSON.stringify(toPrintPlaytime))
+
+        var playtimeTable = makeLeaderboardTable(toPrintPlaytime, "Total Playtime Leaderboard (with alts accounted)", "Playtime", function(num){
+          return (num / (3600*1000)).toFixed(2);
+        })
+        completion(playtimeTable)
+      })
+    }
+
     function makeLeaderboardTable(toPrintItems, tableTitle, dataHeader, numFomatting){
 
       var finalDataArray = []
@@ -980,6 +1082,7 @@ bot.on('message', async function(msg) {
         var num = numFomatting(toPrintItems[i][2])
         finalDataArray.push([userFullName, num])
       }
+      // console.log(JSON.stringify(finalDataArray))
 
       var table = buildAsciiTable(tableTitle, ["Name", dataHeader], finalDataArray, true)
       table.removeBorder()
@@ -1246,6 +1349,120 @@ bot.on('message', async function(msg) {
       }
     }
 
+
+    // 9f6f4313-a963-53a7-959d-9bc988b70b4a - hades
+    // 1f458ea2-e339-5a2a-8745-0a0b4de18f9d - pandda
+    // 2011b6ef-3e08-5a8b-a499-f21fec7d2961 - allusive#700
+
+    // with hades and pandda no allusive
+    // var partyHasToHave = ["9f6f4313-a963-53a7-959d-9bc988b70b4a", "1f458ea2-e339-5a2a-8745-0a0b4de18f9d"]
+    // var partyCannotHave = ["2011b6ef-3e08-5a8b-a499-f21fec7d2961", "ec233817-19c5-5f3b-97d8-f73ea265b5e3", "eb078dd7-93a7-5ca7-9913-85a405987b96", "d84178d6-d6b5-5ebc-9da4-97ed6ec544bc"]
+
+    var ALLUSIVE700 = "2011b6ef-3e08-5a8b-a499-f21fec7d2961"
+    var PANDDA = "1f458ea2-e339-5a2a-8745-0a0b4de18f9d"
+    var HADES = "9f6f4313-a963-53a7-959d-9bc988b70b4a"
+    var JASON = "85415c3a-cade-5581-9ad5-375140ec94ba"
+    var KASH = "25444890-5c05-51df-a788-699cd95b798b"
+    var EROS = "6fd36a69-3635-596c-becb-b1e2d9301823"
+    var CALYPSO = "ef74b854-97af-5c31-b833-0efbebd2cb13"
+
+    var MD03 = "2bd4903e-05b9-5d19-af77-5c772f29d438"
+    var KNIFE = "a17e392d-e548-5b61-9aa7-57f36bad10e7"
+    var ALLUSIVEBEE = "eb078dd7-93a7-5ca7-9913-85a405987b96"
+    var ALLUSIVE400 = "ec233817-19c5-5f3b-97d8-f73ea265b5e3"
+    var ALLUSIVE6884 = "d84178d6-d6b5-5ebc-9da4-97ed6ec544bc"
+    var BUFFJETT = "f1969547-15bf-502c-b511-a4e73ae86814"
+    var NAV = "377edf97-ea41-50c9-ac4f-a4fe3fde4fe3"
+    var JAP = "c37775fd-49dc-579b-a5c2-839b55d26e6f"
+    var NOTJASON = "411152f3-8376-5b4b-bc90-21b0c15fc271"
+    var LILL = "5cb9a887-b879-5862-87a4-ecac1a941274"
+    var POKIMANE = "7d7416a1-bace-572c-9502-88f49982e132"
+    // var WHITEDEATH = "5cb9a887-b879-5862-87a4-ecac1a941274"
+
+
+    // var partyHasToHave = [[HADES, ALLUSIVE700], [HADES, ALLUSIVE6884], [HADES, ALLUSIVEBEE], [HADES, KNIFE],
+    //                       [MD03, ALLUSIVE400], [MD03, ALLUSIVE6884], [MD03, ALLUSIVEBEE], [MD03, KNIFE],
+    //                       [JAP, ALLUSIVE400], [JAP, ALLUSIVE6884], [JAP, ALLUSIVEBEE], [JAP, KNIFE]]
+    // var partyCannotHave = [PANDDA, BUFFJETT, NAV]
+
+    // var partyHasToHave = [[HADES, PANDDA], [HADES, BUFFJETT],[HADES, NAV],
+    //                       [MD03, PANDDA], [MD03, BUFFJETT], [MD03, NAV],
+    //                       [JAP, PANDDA], [JAP, BUFFJETT], [JAP, NAV]]
+    // var partyCannotHave = [ALLUSIVE700, ALLUSIVE400, ALLUSIVE6884, KNIFE, ALLUSIVEBEE]
+
+    // var partyHasToHave = [[JASON, ALLUSIVE700], [JASON, ALLUSIVE6884], [JASON, ALLUSIVEBEE], [JASON, KNIFE],
+    //                       [NOTJASON, ALLUSIVE400], [NOTJASON, ALLUSIVE6884], [NOTJASON, ALLUSIVEBEE], [NOTJASON, KNIFE]]
+    // var partyCannotHave = [PANDDA, BUFFJETT, NAV]
+
+    var partyHasToHave = [[JASON, HADES], [JASON, MD03], [JASON, JAP],
+                          [NOTJASON, HADES], [NOTJASON, MD03], [NOTJASON, JAP]]
+    var partyCannotHave = [PANDDA, BUFFJETT, NAV]
+
+    // var partyHasToHave = [[JASON, PANDDA], [JASON, BUFFJETT], [JASON, NAV],
+    //                       [NOTJASON, PANDDA], [NOTJASON, BUFFJETT], [NOTJASON, NAV]]
+    // var partyCannotHave = [ALLUSIVE700, ALLUSIVE400, ALLUSIVE6884, KNIFE, ALLUSIVEBEE]
+
+    // var partyHasToHave = [[KASH], [LILL]]
+    // var partyCannotHave = [EROS, CALYPSO, HADES, ALLUSIVE700, ALLUSIVE400, ALLUSIVE6884, ALLUSIVEBEE, JAP, POKIMANE, JASON, NOTJASON]
+
+
+    if(arg == "partyplaytime" && msg.member.id == 295701594715062272){
+      getAllMatchesWithPartyConfiguration(partyHasToHave, partyCannotHave, function(matches){
+        var totalPlaytime = 0
+
+        for(var i = 0; i < matches.length; i++){
+          var m = matches[i]
+          var gameTime = m["matchInfo"]["gameLengthMillis"]
+          totalPlaytime += gameTime
+        }
+        msg.channel.send((totalPlaytime/(3600000)).toFixed(2)+" hours")
+      })
+    }
+
+    if(arg == "netelo" && msg.member.id == 295701594715062272){
+      // for party combo and a target player, calculate net elo change with that party
+
+      let targetPlayer = HADES
+      getAllMatchesWithPartyConfiguration(partyHasToHave, partyCannotHave, function(matches){
+        var netElo = 0
+
+        for(var i = 0; i < matches.length; i++){
+          var m = matches[i]
+          var matchId = m["matchInfo"]["matchId"]
+          // console.log("found "+matchId)
+          var eloChangeDataForPlayer = matchHistoryData[targetPlayer]
+          if(eloChangeDataForPlayer != undefined){
+            var eloChangeDataForGame = eloChangeDataForPlayer["Matches"][matchId]
+            if(eloChangeDataForGame != undefined){
+              var eloTierAfter = eloChangeDataForGame["TierAfterUpdate"]
+
+              // if(eloTierAfter != 0){
+                var ratingEarned = eloChangeDataForGame["RankedRatingEarned"]
+                if(ratingEarned != undefined){
+                  console.log("E "+ratingEarned+"_"+matchId)
+                  netElo += ratingEarned
+                }else{
+                  // manual calculation
+                  var eloTierBefore = eloChangeDataForGame["TierBeforeUpdate"]
+                  var eloRankingAfter = eloChangeDataForGame["RankedRatingAfterUpdate"]
+                  var eloRankingBefore = eloChangeDataForGame["RankedRatingBeforeUpdate"]
+
+                  var eloBefore = (eloTierBefore*100)+eloRankingBefore
+                  var eloAfter = (eloTierAfter*100)+eloRankingAfter
+
+                  var eloChange = eloAfter-eloBefore
+                  console.log("E "+eloChange)
+
+                  netElo += eloChange
+                }
+              // }
+            }
+          }
+        }
+        msg.channel.send(netElo+" elo changed for target player "+targetPlayer+" over "+matches.length+" matches")
+      })
+    }
+
     if(arg == "computeall"){
       doAllComputation()
       msg.channel.send("All stats have been computed.")
@@ -1363,6 +1580,13 @@ bot.on('message', async function(msg) {
       }
     }
 
+    if(arg == "playtimealts"){
+      playtimeWithAlts(true, function(playtimeAlts){
+        msg.channel.send("`"+playtimeAlts.toString()+"`")
+
+      })
+    }
+
     if(arg == "global"){
       let pageNumRaw = args[1] || 1
       let pageNum = parseInt(pageNumRaw)
@@ -1435,6 +1659,280 @@ bot.on('message', async function(msg) {
       }else{
         msg.channel.send("Please provide a match ID");
       }
+    }
+
+    if(arg == "matchhistory"){
+      let alias = args[1]
+
+      if(alias != undefined){
+        let userId = subjectIdAliases[alias]
+        if(userId != undefined){
+
+
+          getUserAuth(process.env.VAL_USERNAME, process.env.PASSWORD, async function(creds){
+            // let userId = creds["userId"];
+            let entitlementsToken = creds["entitlementsToken"];
+            let accessToken = creds["accessToken"];
+            let expiryTime = creds["expiry"];
+
+
+//             var matchHistoryOptions = apiCallOptions(accessToken, entitlementsToken, "https://pd.na.a.pvp.net/mmr/v1/players/"+userId+"/competitiveupdates?startIndex=0&endIndex=5")
+            var matchHistoryOptions = apiCallOptions(accessToken, entitlementsToken, "https://pd.na.a.pvp.net/match-history/v1/history/"+userId)
+            request(matchHistoryOptions, async function(err, res, historyBody) {
+              let json = JSON.parse(historyBody);
+              var total = json["Total"];
+              var ms = json["History"];
+              var mstr = ""
+              for(var i = 0; i < ms.length; i++){
+                var m = ms[i]
+                var md = m["GameStartTime"]
+                var d = new Date(md)
+                // var day = dateFormat(d, "mm/dd/yy h:MM:ss tt");
+                var dstr = dateFormat(d, "m/d h:MMtt");
+
+
+                mstr += m["MatchID"]+" @ "+dstr+"\n"
+              }
+              msg.channel.send(mstr)
+            });
+
+          });
+
+
+
+        }
+      }
+    }
+
+    if(arg == "listplayers"){
+      if(args[1] != undefined){
+        let matchId = args[1].toLowerCase()
+        getMatchData(matchId, function(data){
+          var players = data["players"]
+          var finalStr = ""
+          for(var i = 0; i < players.length; i++){
+            var p = players[i]
+            finalStr += p["gameName"]+"#"+p["tagLine"]+": "+p["subject"]+"\n"
+          }
+          msg.channel.send(finalStr)
+        })
+      }
+    }
+
+    if(arg == "actrank"){
+      let alias = args[1]
+      if(alias != undefined){
+        let userId = subjectIdAliases[alias]
+        if(userId == undefined){
+          userId = alias;
+        }
+
+
+        getUserAuth(process.env.VAL_USERNAME, process.env.PASSWORD, async function(creds){
+          // let userId = creds["userId"];
+          let entitlementsToken = creds["entitlementsToken"];
+          let accessToken = creds["accessToken"];
+          let expiryTime = creds["expiry"];
+
+
+
+
+          var actRankOptions = apiCallOptions(accessToken, entitlementsToken, "https://pd.na.a.pvp.net/mmr/v1/players/"+userId)
+          request(actRankOptions, async function(err, res, actRankBody) {
+            let json = JSON.parse(actRankBody);
+            var compData = json["QueueSkills"]["competitive"]
+            var seasonData = compData["SeasonalInfoBySeasonID"]
+
+            // console.log(JSON.stringify(seasonData))
+
+            function getDataStringFromSeasonId(seasonId, data){
+              var seasons = contentData["Seasons"]
+              var seasonName = ""
+              for(var s = 0; s < seasons.length; s++){
+                var season = seasons[s];
+                if(season["ID"] == seasonId){
+                  var episodeName = season["ParentSeasonID"].includes("fcf2c8f4") ? "Episode 1" : "Episode 2"
+                  seasonName = "**"+episodeName+" "+season["Name"]+"**"
+                }
+              }
+
+              console.log("SEASON "+seasonName)
+
+              var wins = data["NumberOfWins"]
+              var numGames = data["NumberOfGames"]
+
+              // var currentRank = RANKS[data["Rank"]]
+
+              var topWins = wins > 0 ? data["TopWins"] : []
+              var actRank = topWins.length >= 9 ? RANKS[topWins[8]] : "None"
+
+              var winrate = ((wins / numGames)*100).toFixed(2);
+              // +"Last rank: "+currentRank
+              var finalStr = seasonName+"\nWins / Total Games: "+wins+" / "+numGames+" ("+winrate+"% winrate)\n"+"Act Rank: "+actRank+"\n"
+              return finalStr
+            }
+
+            var finalStr = ""
+            for (var seasonId in seasonData) {
+              // check if the property/key is defined in the object itself, not in parent
+              if (seasonData.hasOwnProperty(seasonId)) {
+                finalStr += getDataStringFromSeasonId(seasonId, seasonData[seasonId])+"\n"
+              }
+            }
+            // console.log("FINAL: "+finalStr)
+            msg.channel.send(finalStr);
+          });
+        });
+
+      }
+    }
+
+    if(arg == "agentwinloss" || arg == "awl"){
+      if(args[1] != undefined){
+        let alias = args[1].toLowerCase()
+        if(alias != undefined){
+          let userId = subjectIdAliases[alias]
+          var allMatches = matchHistoryData[userId]["MatchSort"]
+
+          function wonGame(teamId, winResults){
+            var roundsWon = 0
+            var roundsLost = 0
+            for (var roundNum in winResults) {
+              // check if the property/key is defined in the object itself, not in parent
+              if (winResults.hasOwnProperty(roundNum)) {
+                var teamWon = winResults[roundNum]
+
+                if(teamWon == teamId){
+                  roundsWon += 1
+                }else{
+                  roundsLost += 1
+                }
+              }
+            }
+            return roundsWon > roundsLost
+          }
+
+          var agentData = {}
+
+          for(var i = 0; i < allMatches.length; i++){
+            var matchId = allMatches[i]
+
+            if(matchHistoryData[userId]["Matches"][matchId]["TierAfterUpdate"] > 0){
+              let rawMatchData = fs.readFileSync(MATCHES_PROCESSED_PATH + matchId + "/users.json");
+              let roundStats = JSON.parse(rawMatchData)
+
+              let gameUserData = roundStats["users"][userId]
+              let userTeam = gameUserData["teamId"]
+
+              let won = userTeam == roundStats["gameInfo"]["winningTeam"]
+
+              let agent = gameUserData["characterId"]
+              let score = gameUserData["stats"]["score"]
+              let deaths = gameUserData["stats"]["deaths"]
+              let kills = gameUserData["stats"]["kills"]
+              let assists = gameUserData["stats"]["assists"]
+              let playtime = gameUserData["stats"]["playtimeMillis"]
+
+              if(agentData[agent] == undefined){
+                agentData[agent] = {
+                  "lost": 0,
+                  "won": 0,
+                  "score":0,
+                  "deaths":0,
+                  "kills":0,
+                  "assists":0,
+                  "playtime":0
+                }
+              }
+
+              agentData[agent][won ? "won" : "lost"] += 1
+              agentData[agent]["score"] += score
+              agentData[agent]["kills"] += kills
+              agentData[agent]["deaths"] += deaths
+              agentData[agent]["assists"] += assists
+              agentData[agent]["playtime"] += playtime
+
+
+            }
+          }
+
+          var finalTableData = []
+          for (var agent in agentData) {
+            // check if the property/key is defined in the object itself, not in parent
+            if (agentData.hasOwnProperty(agent)) {
+              var agentName = AGENT_NAMES[agent]
+              var info = agentData[agent]
+              finalTableData.push([agentName, info["won"], info["lost"], info["score"], info["kills"], info["deaths"], info["assists"], (info["kills"] / info["deaths"]).toFixed(2), (info["playtime"] / (3600*1000)).toFixed(2)])
+            }
+          }
+
+          finalTableData.sort(function(a,b) {
+              return b[8]-a[8]
+          });
+
+          var table = buildAsciiTable("Win Loss per agent", ["Agent", "Games Won", "Games Lost", "Total Score", "Kills", "Deaths", "Assists", "K/D", "Playtime (h)"], finalTableData, false)
+
+          msg.channel.send(table)
+        }
+      }
+    }
+
+    if(arg == "allpartyplaytime" || arg == "allpartyplaytimeall"){
+      calculatePartyPlaytime(arg == "allpartyplaytime" ? false : true,function(data){
+
+        function getKeyByValue(object, value) {
+          return Object.keys(object).find(key => object[key] === value);
+        }
+
+        function convertPartyKeyToString(key){
+          var ids = key.split(",")
+          var finalString = ""
+          for(var i = 0; i < ids.length; i++){
+            var id = ids[i]
+            var alias = getKeyByValue(subjectIdAliases, id)
+
+            if(alias != undefined){
+              finalString += alias+(i == ids.length-1 ? ", " : ", ")
+            }
+          }
+          finalString = finalString.substring(0, finalString.length-2)
+          return finalString
+        }
+
+
+        // console.log(JSON.stringify(data))
+
+        // var parties = data["partyData"]
+        var parties = data
+
+        var finalString = ""
+
+        // for (var party in parties) {
+        //     // check if the property/key is defined in the object itself, not in parent
+        //   if (parties.hasOwnProperty(party)) {
+          for (var i = 0; i < data.length; i++) {
+            var party = data[i][0]
+            var partyData = data[i][1]
+            // var partyData = parties[party]
+
+            var partyString = convertPartyKeyToString(party)
+
+            var numMembers = partyString.split(',').length
+            var playtime = partyData["totalTime"]
+            var hrs = (playtime / (3600*1000)).toFixed(2);
+
+            // console.log(party+"_"+hrs)
+
+            if(numMembers == 5){
+              finalString += partyString + ": "+hrs+"h\n"
+              // console.log(party+"_"+JSON.stringify(partyData)+"__"+partyString)
+            }
+          }
+        // }
+        console.log(finalString)
+
+        msg.channel.send(finalString)
+      })
     }
 
     if(arg == "setcolor"){
@@ -1592,7 +2090,7 @@ function apiCallOptions(accessToken, entitlementsToken, url){
           'Authorization': 'Bearer '+accessToken,
           'X-Riot-Entitlements-JWT': entitlementsToken,
           'X-Riot-ClientPlatform':"ewogICAgInBsYXRmb3JtVHlwZSI6ICJQQyIsCiAgICAicGxhdGZvcm1PUyI6ICJXaW5kb3dzIiwKICAgICJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwKICAgICJwbGF0Zm9ybUNoaXBzZXQiOiAiVW5rbm93biIKfQ==",
-          'X-Riot-ClientVersion':'release-02.02-shipping-8-517074'
+          'X-Riot-ClientVersion':'release-02.03-shipping-8-521855'
       },
   };
   return options
@@ -1858,17 +2356,35 @@ function updateUserElo(userId, accessToken, entitlementsToken, computeStats, dat
       try{
         let json = JSON.parse(body);
         // matchHistoryData[userId]
-
-        var oldMatchesAsArray = []
-        var oldMatches = matchHistoryData[userId]["Matches"]
-        for (var key in oldMatches) {
-            // check if the property/key is defined in the object itself, not in parent
-            if (oldMatches.hasOwnProperty(key)) {
-                oldMatchesAsArray.push(oldMatches[key])
-            }
+        var latestMatches = json["Matches"]
+        var currentMatchesIDs = []
+        for(var i = 0; i < latestMatches.length; i++){
+          var m = latestMatches[i]
+          currentMatchesIDs.push(m["MatchID"])
         }
 
-        var totalMatchesWithExisting = json["Matches"].concat(oldMatchesAsArray)
+
+        var oldMatchesAsArray = []
+        var oldMatchesUser = matchHistoryData[userId]
+        if(oldMatchesUser != undefined){
+          var oldMatches = oldMatchesUser["Matches"]
+          for (var key in oldMatches) {
+            // check if the property/key is defined in the object itself, not in parent
+            if (oldMatches.hasOwnProperty(key)) {
+              if(currentMatchesIDs.includes(key) == false){
+                oldMatchesAsArray.push(oldMatches[key])
+              }
+            }
+          }
+        }else{
+          // first time user get everything
+          console.log("Getting entire match history for new user "+userId)
+          updateUserElo(userId, accessToken, entitlementsToken, true, function(){
+
+          }, true, false)
+        }
+
+        var totalMatchesWithExisting = latestMatches.concat(oldMatchesAsArray)
         var finalJson = {
           "Subject":json["Subject"],
           "Matches":totalMatchesWithExisting
@@ -1918,13 +2434,9 @@ function updateUserElo(userId, accessToken, entitlementsToken, computeStats, dat
           var updateData = JSON.parse(allUpdateData[i])
           console.log("Downloading "+(i*20)+"-"+((i+1)*20))
           downloadMatchHistory(accessToken, entitlementsToken, computeStats, updateData, useLeaderboardStats)
-          await sleep(3000)
+          await sleep(10000)
         }
       })
-
-
-
-
     });
   }
 }
@@ -2051,6 +2563,16 @@ function processAllMatchData(){
   })
 }
 
+function getMatchData(matchId, callback){
+  try{
+    let rawMatchData = fs.readFileSync(MATCHES_RAW_PATH + matchId+".json");
+    let matchData = JSON.parse(rawMatchData)
+    callback(matchData)
+  }catch{
+
+  }
+}
+
 function calculateTotalPlaytime(userId, completion){
   var totalTimeMillis = 0;
   readAllRawMatchData(function(matchID, matchData){
@@ -2060,6 +2582,136 @@ function calculateTotalPlaytime(userId, completion){
   }, function(){
     console.log("T"+totalTimeMillis)
     completion(totalTimeMillis)
+  })
+}
+
+function calculatePartyPlaytime(allTypes, completion){
+
+  var returnData = {
+    "partyData":{}
+  }
+
+  function getRegisteredUserIDs(){
+    var ids = []
+    for (var alias in subjectIdAliases) {
+      // check if the property/key is defined in the object itself, not in parent
+      if (subjectIdAliases.hasOwnProperty(alias)) {
+        ids.push(subjectIdAliases[alias])
+      }
+    }
+    return ids
+  }
+
+  var registeredIds = getRegisteredUserIDs()
+
+  function partyIncludesAllRequired(gameParty){
+    // gameParty = ["1", "2", "3"]
+    // partyMustInclude = ["1", "2"]
+    // for(var i = 0; i < partyMustInclude.length; i++){
+    //   var p = partyMustInclude[i]
+    //   if(gameParty.contains(p) == false){
+    //     return false
+    //   }
+    // }
+    // return true
+    function convertAltsToMains(idLists){
+      var mainParty = []
+      for(var i = 0; i < gameParty.length; i++){
+        var pId = gameParty[i]
+
+        for (var alias in altData) {
+          // check if the property/key is defined in the object itself, not in parent
+          if (altData.hasOwnProperty(alias)) {
+            var alts = altData[alias]
+            if(alts.includes(pId)){
+              // associate this game party account with the main of alias
+              var mainId = subjectIdAliases[alias]
+              pId = mainId
+            }
+          }
+        }
+
+        mainParty.push(pId)
+      }
+      return mainParty
+    }
+
+    gameParty = convertAltsToMains(gameParty)
+
+    if(gameParty.some(r=> registeredIds.includes(r))){
+      return gameParty
+    }else{
+      return null
+    }
+  }
+
+  readAllRawMatchData(function(matchId, matchData){
+    var qType = matchData["matchInfo"]["queueID"]
+
+    if(allTypes || (!allTypes && qType == "competitive")){
+      var partiesInMatch = {}
+      var players = matchData["players"]
+
+      for(var p = 0; p < players.length; p++){
+        var player = players[p]
+        var userId = player["subject"]
+        var partyId = player["partyId"]
+        if(partiesInMatch[partyId] == undefined){
+          partiesInMatch[partyId] = []
+        }
+        partiesInMatch[partyId].push(userId)
+      }
+
+      for (var partyId in partiesInMatch) {
+        // check if the property/key is defined in the object itself, not in parent
+        if (partiesInMatch.hasOwnProperty(partyId)) {
+          var partyInc = partyIncludesAllRequired(partiesInMatch[partyId])
+          if(partyInc != null){
+
+            var playtime = matchData["matchInfo"]["gameLengthMillis"]
+
+
+            var curMatchData = {
+              "gameStartMillis":matchData["matchInfo"]["gameStartMillis"],
+              "gameLengthMillis":matchData["matchInfo"]["gameLengthMillis"],
+              "matchId":matchData["matchInfo"]["matchId"]//,
+              // "partyMembers":partyInc
+            }
+
+            partyInc.sort()
+            // console.log("DDD "+JSON.stringify(partyInc))
+
+            if(returnData["partyData"][partyInc] == undefined){
+              returnData["partyData"][partyInc] = {
+                "games":[],
+                "totalTime":0
+              }
+            }
+
+            returnData["partyData"][partyInc]["totalTime"] += playtime
+            returnData["partyData"][partyInc]["games"].push(curMatchData)
+            // console.log("D2 "+returnData["partyData"][partyInc]["totalTime"])
+
+          }
+        }
+      }
+
+    }
+  }, function(){
+
+    let ret = returnData["partyData"]
+    // Create items array
+    var items = Object.keys(ret).map(function(key) {
+      return [key, ret[key]];
+    });
+
+    // Sort the array based on the second element
+    items.sort(function(first, second) {
+      return second[1]["totalTime"] - first[1]["totalTime"];
+    });
+
+    returnData = items;
+    completion(returnData)
   })
 }
 
@@ -2522,6 +3174,54 @@ function doAllComputation(useLeaderboardStats){
   computeTotalHits(useLeaderboardStats)
   computeTotalUsers(useLeaderboardStats)
   bot.channels.cache.get("798343660001165332").send("Computed all stats. For leaderboard users: "+useLeaderboardStats);
+}
+
+function getAllMatchesWithPartyConfiguration(partyHasToHave, partyCannotHave, completion){
+  var foundMatches = []
+  readAllRawMatchData(function(matchID, matchData){
+    var partiesInMatch = {}
+    var players = matchData["players"]
+
+    for(var p = 0; p < players.length; p++){
+      var player = players[p]
+      var userId = player["subject"]
+      var partyId = player["partyId"]
+      if(partiesInMatch[partyId] == undefined){
+        partiesInMatch[partyId] = []
+      }
+      partiesInMatch[partyId].push(userId)
+    }
+
+    for (var partyId in partiesInMatch) {
+      // check if the property/key is defined in the object itself, not in parent
+      if (partiesInMatch.hasOwnProperty(partyId)) {
+        var partyMembers = partiesInMatch[partyId]
+        var foundAValidParty = false;
+
+        var containsInvalidMember = partyCannotHave.some(val => partyMembers.includes(val));
+
+        if(!containsInvalidMember){
+          for(var k = 0; k < partyHasToHave.length; k++){
+            var partyToCheck = partyHasToHave[k] // ["uid1", "uid2"]
+
+            // now we test if everyone in partyToCheck exists in partyMembers
+            const result = partyToCheck.every(val => partyMembers.includes(val));
+            if(result){
+              foundAValidParty = true;
+            }
+          }
+        }
+
+        if(foundAValidParty == true){
+          // valid party definition
+          foundMatches.push(matchData)
+
+        }
+      }
+    }
+  }, function(){
+    completion(foundMatches)
+  })
 }
 
 function sleep(ms) {
