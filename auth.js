@@ -1,15 +1,13 @@
 const request = require('request');
 const requestPromise = require('request-promise');
+const querystring = require('querystring');
 
-let authCacheData = readJSONFile('private/authCache.json');
+const CONSTANTS = require('./constants');
+let authCacheData = CONSTANTS.readJSONFile('private/authCache.json');
 
 var latestEntitlements = ""
 var latestToken = ""
 var expireTime = 0
-
-function readJSONFile(path){
-  return JSON.parse(fs.readFileSync(path))
-}
 
 function getUserAuth(completion){
   let username = process.env.VAL_USERNAME
@@ -107,8 +105,8 @@ function getUserAuth(completion){
                 "expiry":finalExpireTime
               }
               authCacheData[username] = creds;
-              fs.writeFileSync('private/authCache.json', JSON.stringify(authCacheData, null, 2) , 'utf-8');
-
+              CONSTANTS.writeJSONFile('private/authCache.json', authCacheData)
+              
               latestEntitlements = entitlementsToken
               latestToken = latestToken
               expireTime = finalExpireTime
@@ -161,7 +159,7 @@ function getRequestPromiseWithCompletion(url, completion){
   })
 }
 
-modules.exports = {
+module.exports = {
   getLatestAuth: getUserAuth,
   getRequest: getRequest,
   getRequestPromise:getRequestPromise,

@@ -1951,6 +1951,10 @@ bot.on('message', async function(msg) {
       }
     }
 
+    if(arg == "howtogetradiant"){
+      msg.channel.send("Step 1: Hit the heads when enemies show up.\nStep 2: Repeat step 1.")
+    }
+
     // ?add <GameName#TagLine> <alias>
     if(arg == "add"){
       const regex = new RegExp('"[^"]+"|[\\S]+', 'g');
@@ -2560,6 +2564,8 @@ function readAllRawMatchData(matchDataCallback, completion){
 function processAllMatchData(){
   readAllRawMatchData(function(matchID, matchData){
     processMatchData(matchID, matchData, function(){}, true)
+  }, function(){
+    console.log("Read all raw.")
   })
 }
 
