@@ -19,6 +19,11 @@ for (var i = 0; i < contentData["Characters"].length; i++) {
   AGENT_NAMES[contentData["Characters"][i]["ID"].toLowerCase()] = contentData["Characters"][i]["Name"]
 }
 
+var MAP_NAMES = {}
+for (var i = 0; i < contentData["Maps"].length; i++) {
+  MAP_NAMES[contentData["Maps"][i]["AssetName"].toLowerCase()] = contentData["Maps"][i]["Name"]
+}
+
 function readJSONFile(path){
   return JSON.parse(fs.readFileSync(path))
 }
@@ -71,6 +76,7 @@ module.exports = {
   CHART:{
     WIDTH: 700
   },
+  DEFAULT_MSG_COLOR: "#000000",
   RANKS:{
     "0": "Unrated",
     "1": "Unknown 1",
@@ -103,6 +109,13 @@ module.exports = {
     ELO:"elo",
     PLAYTIME:"playtime",
     PROCESSALL:"processall",
-    COMPUTEALL:"computeall"
+    COMPUTEALL:"computeall",
+    SETCOLOR:"setcolor",
+    HISTORY:"history"
+  },
+  DISCORD_ADMIN_USERS:[295701594715062272],
+  CONTENT:{
+    AGENT_NAMES:AGENT_NAMES,
+    MAP_NAMES:MAP_NAMES
   }
 }

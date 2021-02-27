@@ -23,7 +23,6 @@ function matchHistory(userId, completion){
   let url = 'https://pd.na.a.pvp.net/mmr/v1/players/'+userId+"/competitiveupdates?startIndex=0&endIndex=20"
   AUTH.getRequest(url, function(data){
     let matches = data["Matches"]
-
     var newMatchIDs = matches.reduce(function(filtered, match) {
       var matchStartTime = match["MatchStartTime"]
       if (matchStartTime >= CONSTANTS.EPISODE_2_START_TIME_MILLIS) {
@@ -32,13 +31,15 @@ function matchHistory(userId, completion){
       }
       return filtered;
     }, []);
+    console.log("MATCHES FROM RES "+matches.length+"_"+newMatchIDs.length)
 
     var oldMatchesAsArray = []
     var oldMatchesUser = matchHistoryData[userId]
     if(oldMatchesUser != undefined){
       var oldMatches = oldMatchesUser["Matches"]
+      // console.log("OLD MATCHES "+JSON.stringify(oldMatches))
       for (var key in oldMatches) {
-        if (oldMatches.hasOwnProperty(key) && !newMatchIDs.includes(key) == false) {
+        if (oldMatches.hasOwnProperty(key) && newMatchIDs.includes(key) == false) {
           oldMatchesAsArray.push(oldMatches[key])
         }
       }
@@ -63,7 +64,29 @@ function matchHistory(userId, completion){
     console.log("ER "+error+"_"+error2)
   })
 }
+function scoreboardForMatches(matchIds){
+  var processedPath = CONSTANTS.PATHS.PROCESSED_MATCHES;
 
+  var scoreboards = []
+  for(var i = 0; i < matchIds.length; i++){
+    var matchId = matchIds[i];
+    try{
+      let matchOverviewData = CONSTANTS.readJSONFile(processedPath + matchId + "/overview.json")
+      scoreboards.push(matchOverviewData)
+    }catch(err){
+      console.log("TOTAL ERR "+err)
+    }
+  }
+}
+function scoreboardForMatch(matchId){
+  var processedPath = CONSTANTS.PATHS.PROCESSED_MATCHES;
+  try{
+    let matchOverviewData = CONSTANTS.readJSONFile(processedPath + matchId + "/overview.json")
+    return matchOverviewData
+  }catch(err){
+    console.log("TOTAL ERR "+err)
+  }
+}
 // Update matchHistory.json
 /*
  matchInfo = [
@@ -82,15 +105,20 @@ function saveMatchHistory(userId, matchInfo){
     }
   }
 
+  // console.log(JSON.stringify(matchInfo))
   for(var i = 0; i < matchInfo.length; i++){
     var curMatchInfo = matchInfo[i]
     var matchId = curMatchInfo["MatchID"]
-    matchHistoryData[userId]["Matches"][matchId] = matchInfo[matchId]
+    matchHistoryData[userId]["Matches"][matchId] = matchInfo[i]
   }
 
-  var matchItems = Object.keys(matchHistoryData[subject]["Matches"]).map(function(key) {
-    return [key, matchHistoryData[subject]["Matches"][key]];
+  var allMatches = matchHistoryData[userId]["Matches"]
+  var matchItems = Object.keys(allMatches).map(function(key) {
+    if(allMatches[key] == null)
+      console.log(allMatches[key]+"_"+userId+"_"+key)
+    return [key, allMatches[key]];
   });
+  // console.log("5 "+JSON.stringify(matchItems))
   matchItems.sort(function(firstObj, secondObj) {
     var firstMatch = firstObj[1]
     var secondMatch = secondObj[1]
@@ -103,7 +131,7 @@ function saveMatchHistory(userId, matchInfo){
     var matchId = match["MatchID"]
     matchSortArray.push(matchId)
   }
-  matchHistoryData[subject]["MatchSort"] = matchSortArray
+  matchHistoryData[userId]["MatchSort"] = matchSortArray
 
   CONSTANTS.writeJSONFile('private/matchHistory.json', matchHistoryData)
 }
@@ -122,33 +150,40 @@ function downloadMatchIDs(userId, matchIDs){
           var url = 'https://pd.na.a.pvp.net/match-details/v1/matches/'+matchId
           var matchReq = AUTH.getRequestPromise(url, ent, tok)
           allRequests.push(matchReq);
+        }else{
+          // already downloaded. process again to be sure (only because old version of bot also downloaded matches)
+          PROCESSING.processMatchData(getMatchDataFromMatchId(matchId))
         }
       }
+      Promise.all(allRequests).then((allMatchData) => {
+        for(var i = 0; i < allMatchData.length; i++){
+          var matchData = JSON.parse(allMatchData[i])
+          var matchId = matchData["matchInfo"]["matchId"]
+
+          matchesDownloadedData[userId][matchId] = 1
+          saveMatchToFile(matchId, matchData)
+          // TODO process here?
+          PROCESSING.processMatchData(matchData)
+        }
+        CONSTANTS.writeJSONFile('private/matchesDownloaded.json', matchesDownloadedData)
+      })
     })
   }
-  Promise.all(allRequests).then((allMatchData) => {
-    for(var i = 0; i < allMatchData.length; i++){
-      var matchData = JSON.parse(allMatchData[i])
-      var matchId = matchData["matchInfo"]["matchId"]
 
-      matchesDownloadedData[subject][matchID] = 1
-      saveMatchToFile(matchId, matchData)
-      // TODO process here?
-      PROCESSING.processMatchData(matchData)
-    }
-    CONSTANTS.writeJSONFile('private/matchesDownloaded.json', matchesDownloadedData)
-  })
 }
 
 function saveMatchToFile(matchId, matchData){
   var rawPath = rawMatchPath(matchId)
   CONSTANTS.writeJSONFile(rawPath, matchData)
 }
-
-function rawMatchPath(matchID){
-  return CONSTANTS.PATHS.RAW_MATCHES+matchID+'.json'
+function getMatchDataFromMatchId(matchId){
+  return CONSTANTS.readJSONFile(rawMatchPath(matchId))
+}
+function rawMatchPath(matchId){
+  return CONSTANTS.PATHS.RAW_MATCHES+matchId+'.json'
 }
 
 module.exports = {
-  matchHistory: matchHistory
+  matchHistory: matchHistory,
+  scoreboardForMatch:scoreboardForMatch
 }

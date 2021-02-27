@@ -69,7 +69,7 @@ function computeTotalStats(){
               }
             }
           }
-          let userEntity = totalStatsData[subject]
+          let userEntity = player
           if(userEntity == undefined){
             userEntity = {
               "gameName":null,
@@ -101,9 +101,9 @@ function computeTotalStats(){
           var deaths = stats["deaths"]
           var assists = stats["assists"]
           var playtimeMillis = stats["playtimeMillis"]
-          var defuses = stats["defuses"]
-          var firstBloods = stats["firstBloods"]
-          var plants = stats["plants"]
+          var defuses = stats["defuses"] == null ? 0 : stats["defuses"]
+          var firstBloods = stats["firstBloods"] == null ? 0 : stats["firstBloods"]
+          var plants = stats["plants"] == null ? 0 : stats["plants"]
 
           var curstats = statsData[subject]["stats"]
           var curscore = curstats["score"]
@@ -151,7 +151,28 @@ function computeTotalStats(){
             statsData[subject]["stats"]["ultimateCasts"] += utilEntity["ultimateCasts"];
           }
         }
-        // console.log("TOTAL FOR "+matchId)
+
+        let hits = playerStatsData["hits"]
+        for (var subject in hits) {
+          // check if the property/key is defined in the object itself, not in parent
+          if (hits.hasOwnProperty(subject)) {
+            // console.log(subject, dictionary[subject]);
+            let hitsEntity = hits[subject];
+            if(statsData[subject] == undefined){
+              statsData[subject] = {
+                "stats":{
+                  "headshots": 0,
+                  "bodyshots": 0,
+                  "legshots": 0
+                }
+              }
+            }
+            statsData[subject]["stats"]["headshots"] += hitsEntity["headshots"];
+            statsData[subject]["stats"]["bodyshots"] += hitsEntity["bodyshots"];
+            statsData[subject]["stats"]["legshots"] += hitsEntity["legshots"];
+          }
+        }
+
       }catch(err){
         console.log("TOTAL ERR "+err)
       }

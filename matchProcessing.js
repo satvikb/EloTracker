@@ -16,9 +16,10 @@ function processMatchData(matchData){
     if (!fs.existsSync(folderPath)){
       fs.mkdirSync(folderPath);
     }
-
+    //a9dcccc3-051b-494f-b62a-4bfe1d798106
     let matchStartTime = matchData["matchInfo"]["gameStartMillis"]
     processedMatchesData[matchId]["gameStartMillis"] = matchStartTime
+    console.log("Processing "+matchId)
 
     if(processedMatchesData[matchId][CONSTANTS.PROCESSING.STAT] == undefined){
       processedMatchesData[matchId][CONSTANTS.PROCESSING.STAT] = 1;

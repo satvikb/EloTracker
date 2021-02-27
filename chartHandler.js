@@ -1,3 +1,8 @@
+var CONSTANTS = require('./constants');
+var dateFormat = require('dateformat');
+const { stringify } = require("javascript-stringify");
+const request = require('request');
+
 // for charting
 // now going to assume its sorted
 function getCompEloHistoryList(compUpdatesMatches){
@@ -13,7 +18,7 @@ function getCompEloHistoryList(compUpdatesMatches){
     if(matchData["TierAfterUpdate"] > 0){
       var matchStartDate = matchData["MatchStartTime"]
 
-      if(matchStartDate > EPISODE_2_START_TIME_MILLIS){
+      if(matchStartDate > CONSTANTS.EPISODE_2_START_TIME_MILLIS){
         eloArray.push(eloFromCompInfo(matchData))
 
         var d = new Date(matchStartDate)
@@ -25,6 +30,41 @@ function getCompEloHistoryList(compUpdatesMatches){
     }
   }
   return {"dates":dateArray, "elo":eloArray}
+}
+function eloFromCompInfo(matchInfo){
+  let RPAfter = matchInfo["RankedRatingAfterUpdate"];
+  let tierAfter = matchInfo["TierAfterUpdate"]
+  var currentElo = (tierAfter*100) - 300 + RPAfter;
+  return currentElo
+}
+function makeAnnotationsForEloMarkers(lowest, highest){
+  var numberOfAnnotations = Math.ceil((highest-lowest)/100) + 1 // extra 1 should be for rank below lowest elo
+  var annotations = []
+  var lowestEloAnno = Math.floor(lowest/100)*100
+  // console.log("ANNO "+lowest+"_"+highest+"_"+numberOfAnnotations+"_"+lowestEloAnno+"_")
+  for(var i = 0; i < numberOfAnnotations; i++){
+    var anno = {
+      type: 'line',
+      scaleID: 'y-axis-0',
+      mode:"horizontal",
+      value: lowestEloAnno,
+      borderColor: 'red',
+      borderWidth: 1,
+      label:{
+        enabled: true,
+        content:CONSTANTS.RANKS[((lowestEloAnno+300)/100)+""],
+        position:"start",
+        font:{
+          size:12,
+          color:"#888",
+        },
+        xAdjust:-(CONSTANTS.CHART.WIDTH/2)+55
+      }
+    }
+    annotations.push(anno)
+    lowestEloAnno += 100
+  }
+  return annotations
 }
 function buildEloChart(eloData, userName, userColor){
   if(eloData["elo"].length == 0){
@@ -40,7 +80,7 @@ function buildEloChart(eloData, userName, userColor){
   var average = sum / eloData["elo"].length
 
   var averageRankNum = Math.floor((average/100))+3;
-  var averageRankText = RANKS[""+averageRankNum]
+  var averageRankText = CONSTANTS.RANKS[""+averageRankNum]
   var eloAnnotations = makeAnnotationsForEloMarkers(eloMin, eloMax)
 
   var chartOptions = {
@@ -114,7 +154,7 @@ function chartURLFromObject(chartObject, completion){
     method: 'POST',
     json: {
       "chart":(stringify(chartObject)),
-      "width":ELO_CHART_WIDTH,
+      "width":CONSTANTS.CHART.WIDTH,
       "backgroundColor":"white"
     }
   }
