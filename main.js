@@ -67,18 +67,16 @@ bot.on('message', async function(msg) {
           var userData = MATCH_COMPUTATION.getStatsData()[userId]
           var fullName = userData["gameName"]+"#"+userData["tagLine"]
 
-          var completion = function(){}
-          var embed = DISCORD_HANDLER.getEmbedForEloHistory(history, args, fullName, msg.member.id, completion)
-
-          var statMsg = await msg.channel.send({embed})
-
-          completion = async function(url){
-            embed.setImage(url)
-            // statMsg.edit(embed) // TODO does this work? statMsg is defined after
-          }
+          DISCORD_HANDLER.sendEmbedForEloHistory(msg, history, args, fullName)
         })
       }else{
         msg.channel.send("User not found. Make sure alias is added.")
+      }
+    }
+    if(arg == CONSTANTS.COMMANDS.STATS){
+      var userId = userIdFromAlias(args[1])
+      if(userId != null){
+        DISCORD_HANDLER.sendEmbedForPlayerStats(msg, userId)
       }
     }
     if(arg == CONSTANTS.COMMANDS.HISTORY){
@@ -87,8 +85,7 @@ bot.on('message', async function(msg) {
         MATCH_HANDLER.matchHistory(userId, async function(history){
           var userData = MATCH_COMPUTATION.getStatsData()[userId]
           var fullName = userData["gameName"]+"#"+userData["tagLine"]
-          var table = DISCORD_HANDLER.getMessageForMatchHistory(userId, history, args, fullName, msg.member.id)
-          msg.channel.send(table)
+          DISCORD_HANDLER.sendMessageForMatchHistory(msg, userId, history, args, fullName, msg.member.id)
         })
       }
     }

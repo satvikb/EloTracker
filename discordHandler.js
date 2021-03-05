@@ -1,6 +1,7 @@
 var CHART_HANDLER = require('./chartHandler');
 var TABLE_HANDLER = require('./tableHandler');
 var MATCH_HANDLER = require('./matchHandler');
+var MATCH_COMPUTATION = require('./matchComputation');
 
 var CONSTANTS = require('./constants');
 var dateFormat = require('dateformat');
@@ -12,7 +13,8 @@ function calcElo(tierAfter, rpAfter){
   return (tierAfter*100) - 300 + rpAfter;
 }
 
-function getEmbedForEloHistory(eloHistory, args, userFullName, discordId, chartCompletion){
+async function sendEmbedForEloHistory(msg, eloHistory, args, userFullName){
+  var discordId = msg.member.id
   var numToShow = 3;
   var debugMode = false
   var showAuth = false;
@@ -206,15 +208,63 @@ function getEmbedForEloHistory(eloHistory, args, userFullName, discordId, chartC
 
   var eloData = CHART_HANDLER.getCompEloHistoryList(matchData)
   var eloChart = CHART_HANDLER.buildEloChart(eloData, userFullName, userColor)
+
+  var statMsg = await msg.channel.send({embed})
   if(eloChart != null){
     CHART_HANDLER.chartURLFromObject(eloChart, function(url){
-      chartCompletion(url)
+      embed.setImage(url)
+      statMsg.edit(embed) // TODO does this work? statMsg is defined after
     })
   }
-
-  return embed
 }
-function getMessageForMatchHistory(userId, eloHistory, args, userFullName, discordId){
+async function sendEmbedForPlayerStats(msg, userId){
+  var discordId = msg.member.id
+
+  var statsObject = MATCH_COMPUTATION.getStatsData()
+  var userStats = statsObject[userId]
+  if(userStats != undefined){
+
+    let userColor = userColors[discordId] == undefined ? CONSTANTS.DEFAULT_MSG_COLOR : userColors[discordId]
+
+    var userFullName = userStats["gameName"]+"#"+userStats["tagLine"]
+    const embed = new discord.MessageEmbed()
+          .setColor(userColor)
+          .setTitle('Overall stats')
+          // .setURL('https://discord.js.org/')
+          .setAuthor(userFullName, '', '')
+
+    var statData = userStats["stats"]
+
+    var hs = statData["headshots"], bs = statData["bodyshots"], ls = statData["legshots"]
+    embed.addField("Playtime", (statData["playtimeMillis"] / (3600*1000)).toFixed(2)+"h", true)
+    embed.addField("Kills", statData["kills"], true)
+    embed.addField("Deaths", statData["deaths"], true)
+    embed.addField("Assists", statData["assists"], true)
+    embed.addField("K/D", statData["kd"].toFixed(2), true)
+    embed.addField("First Bloods %", ((statData["firstBloods"] / statData["roundsPlayed"])*100).toFixed(2)+"%", true)
+    // embed.addField("First Bloods", statData["firstBloods"], true)
+    embed.addField("Plants", statData["plants"], true)
+    embed.addField("Defuses", statData["defuses"], true)
+    embed.addField('\u200b', '\u200b')
+    embed.addField("Games", statData["totalGamesPlayed"], true)
+    embed.addField("Score", statData["score"], true)
+    embed.addField("Rounds", statData["roundsPlayed"], true)
+    embed.addField("Game Win Rate", ((statData["totalGamesWon"] / statData["totalGamesPlayed"])*100).toFixed(2)+"%", true)
+    embed.addField("Round Win Rate", ((statData["roundsWon"] / statData["roundsPlayed"])*100).toFixed(2)+"%", true)
+    embed.addField('\u200b', '\u200b')
+    embed.addField("Util 1", statData["ability1Casts"], true)
+    embed.addField("Util 2", statData["ability2Casts"], true)
+    embed.addField("Util 3", statData["grenadeCasts"], true)
+
+    embed.addField("Headshots", hs, true)
+    embed.addField("Bodyshots", bs, true)
+    embed.addField("Legshots", ls, true)
+    embed.addField("HS %", ((hs/(hs+bs+ls))*100).toFixed(2)+"%", true)
+
+    var sent = await msg.channel.send({embed})
+  }
+}
+function sendMessageForMatchHistory(msg, userId, eloHistory, args, userFullName, discordId){
   var numToShow = 3;
   var debugMode = false
   var showAuth = false;
@@ -369,8 +419,8 @@ function getMessageForMatchHistory(userId, eloHistory, args, userFullName, disco
 
             var agentName = CONSTANTS.CONTENT.AGENT_NAMES[characterId.toLowerCase()]
             var kda = kills+" / "+deaths+" / "+assists
-            var place = (10-p)+1
-            var placeText = p == 0 ? "1st" : (place == 1 ? "2nd" : (place == 2 ? "3rd" : (place+1)+"th"))
+            var place = (9-p)
+            var placeText = place == 0 ? "1st" : (place == 1 ? "2nd" : (place == 2 ? "3rd" : (place+1)+"th"))
             var mvpText = teamMVP ? "(Team MVP)" : (matchMVP ? "(Match MVP)" : "")
             var combatScoreText = playerScore+" ("+placeText+") "+mvpText
             var wonText = won ? "VICTORY" : "DEFEAT"
@@ -401,7 +451,7 @@ function getMessageForMatchHistory(userId, eloHistory, args, userFullName, disco
 
   var tableHeaders = reducedColumns ? ["Agent", "KDA", "Score & MVPs", "R", "Score", "Map", "Elo", "Day"] : ["Agent", "KDA", "Score & MVPs", "Result", "Score", "Map", "Elo", "Time"]
   var table = TABLE_HANDLER.buildAsciiTable("MATCH HISTORY FOR "+userFullName+" ("+latestElo+" RP)", tableHeaders, tableData, false, false)
-  return table
+  msg.channel.send(table)
 }
 
 function setUserColor(discordUserId, color){
@@ -409,6 +459,7 @@ function setUserColor(discordUserId, color){
   CONSTANTS.writeJSONFile('private/userColors.json', userColors)
 }
 module.exports = {
-  getEmbedForEloHistory:getEmbedForEloHistory,
-  getMessageForMatchHistory:getMessageForMatchHistory
+  sendEmbedForEloHistory:sendEmbedForEloHistory,
+  sendEmbedForPlayerStats:sendEmbedForPlayerStats,
+  sendMessageForMatchHistory:sendMessageForMatchHistory
 }

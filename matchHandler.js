@@ -2,8 +2,8 @@ var AUTH = require('./auth');
 var CONSTANTS = require('./constants');
 var PROCESSING = require('./matchProcessing');
 
-let matchesDownloadedData = CONSTANTS.readJSONFile('private/matchesDownloaded.json');
-let matchHistoryData = CONSTANTS.readJSONFile('private/matchHistory.json');
+var matchesDownloadedData = CONSTANTS.readJSONFile('private/matchesDownloaded.json');
+var matchHistoryData = CONSTANTS.readJSONFile('private/matchHistory.json');
 
 
 // So we download all the last 20 matches and combine it with the existing match history

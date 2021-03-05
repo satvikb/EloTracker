@@ -2,13 +2,13 @@ const fs = require('fs');
 
 var CONSTANTS = require('./constants');
 
-let processedMatchesData = CONSTANTS.readJSONFile('private/processedMatches.json');
+var processedMatchesData = CONSTANTS.readJSONFile('private/processedMatches.json');
 
-function processMatchData(matchData){
+function processMatchData(matchData, force){
   let matchId = matchData["matchInfo"]["matchId"]
 
   if(shouldProcessMatchData(matchData) == true){
-    if(processedMatchesData[matchId] == undefined){
+    if(processedMatchesData[matchId] == undefined || force){
       processedMatchesData[matchId] = {}
     }
 
@@ -19,7 +19,7 @@ function processMatchData(matchData){
     //a9dcccc3-051b-494f-b62a-4bfe1d798106
     let matchStartTime = matchData["matchInfo"]["gameStartMillis"]
     processedMatchesData[matchId]["gameStartMillis"] = matchStartTime
-    console.log("Processing "+matchId)
+    console.log("Processing "+matchId+"_"+processedMatchesData[matchId][CONSTANTS.PROCESSING.PARTY])
 
     if(processedMatchesData[matchId][CONSTANTS.PROCESSING.STAT] == undefined){
       processedMatchesData[matchId][CONSTANTS.PROCESSING.STAT] = 1;
@@ -32,6 +32,11 @@ function processMatchData(matchData){
     if(processedMatchesData[matchId][CONSTANTS.PROCESSING.ROUND] == undefined){
       processedMatchesData[matchId][CONSTANTS.PROCESSING.ROUND] = 1;
       processMatchRoundsAnalysis(folderPath, matchData)
+    }
+    if(processedMatchesData[matchId][CONSTANTS.PROCESSING.PARTY] == undefined){
+      processedMatchesData[matchId][CONSTANTS.PROCESSING.PARTY] = 1;
+      console.log("Party Null")
+      processMatchPartyAnalysis(folderPath, matchData)
     }
     CONSTANTS.writeJSONFile('private/processedMatches.json', processedMatchesData)
   }else{
@@ -360,9 +365,63 @@ function processMatchRoundsAnalysis(path, matchData){
   allRoundDataFinal["playerCharacters"] = playerCharacters
   CONSTANTS.writeJSONFile(path+'/roundStats.json', allRoundDataFinal)
 }
+function processMatchPartyAnalysis(path, matchData){
+  var partyData = {}
+  var partyIds = {} // associate player id with the party
+  var players = matchData["players"]
+  var teamInfo = matchData["teams"]
+
+  function getTeamInfoFromId(teamId){
+    for(var i = 0; i < teamInfo.length; i++){
+      if(teamInfo[i]["teamId"] == teamId){
+        return teamInfo[i]
+      }
+    }
+    return null
+  }
+
+  try{
+    for(var p = 0; p < players.length; p++){
+      var player = players[p]
+      var userId = player["subject"]
+      var partyId = player["partyId"]
+      var teamId = player["teamId"]
+      var playerStats = player["stats"]
+
+      // partyIds[userId] = partyId
+      if(partyData[partyId] == undefined){
+        partyData[partyId] = {
+          "playtimeMillis":0,
+          "totalKills":0,
+          "totalDeaths":0,
+          "totalAssists":0,
+          "members":[]
+        }
+      }
+      var playerTeam = getTeamInfoFromId(teamId)
+      if(playerTeam != null){
+        partyData[partyId]["roundsPlayed"] = playerTeam["roundsPlayed"]
+        partyData[partyId]["roundsWon"] = playerTeam["roundsWon"]
+        partyData[partyId]["wonGame"] = playerTeam["won"]
+      }
+
+      partyData[partyId]["totalKills"] += playerStats["kills"]
+      partyData[partyId]["totalDeaths"] += playerStats["deaths"]
+      partyData[partyId]["totalAssists"] += playerStats["assists"]
+      partyData[partyId]["playtimeMillis"] = playerStats["playtimeMillis"] // will be set multiple times, but should be the same
+
+      partyData[partyId]["members"].push(userId)
+    }
+  }catch(err){
+    console.log(err)
+  }
+  CONSTANTS.writeJSONFile(path+'/party.json', partyData)
+
+}
 function shouldProcessMatchData(matchData){
   let qId = matchData["matchInfo"]["queueID"]
-  return qId == "competitive"
+  let startTime = matchData["matchInfo"]["gameStartMillis"]
+  return qId == "competitive" && startTime > CONSTANTS.EPISODE_2_ACT2_START_TIME_MILLIS
 }
 function readAllRawMatchData(matchDataCallback, completion){
   fs.readdir(CONSTANTS.PATHS.RAW_MATCHES, function(err, filenames) {
@@ -386,13 +445,16 @@ function readAllRawMatchData(matchDataCallback, completion){
 }
 function processAllGames(){
   readAllRawMatchData(function(matchID, matchData){
-    processMatchData(matchData)
+    processMatchData(matchData, true)
   }, function(){
     console.log("Done processing all games")
   })
 }
-
+function getProcessedMatchesData(){
+  return processedMatchesData
+}
 module.exports = {
   processMatchData: processMatchData,
-  processAllGames:processAllGames
+  processAllGames:processAllGames,
+  getProcessedMatchesData:getProcessedMatchesData
 }

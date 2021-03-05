@@ -39,7 +39,8 @@ module.exports = {
   PROCESSING:{
     OVERVIEW:"overviewAnalysis",
     STAT:"statAnalysis",
-    ROUND:"roundAnalysis"
+    ROUND:"roundAnalysis",
+    PARTY:"partyAnalysis"
   },
   PATHS:{
     RAW_MATCHES:"matches/raw/",
@@ -105,8 +106,10 @@ module.exports = {
     "24": "Radiant"
   },
   EPISODE_2_START_TIME_MILLIS:1610442000000,
+  EPISODE_2_ACT2_START_TIME_MILLIS:1614694500000,
   COMMANDS:{
     ELO:"elo",
+    STATS:"stats",
     PLAYTIME:"playtime",
     PROCESSALL:"processall",
     COMPUTEALL:"computeall",

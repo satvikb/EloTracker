@@ -438,6 +438,7 @@ bot.on('message', async function(msg) {
       // let matchSort = compHistory["MatchSort"]
       var eloArray = []
       var dateArray = []
+      var dataPoints = []
       for(var i = 0; i < compUpdatesMatches.length; i++){
         // var matchId = matchSort[i]
         var matchData = compUpdatesMatches[i]//compHistory["Matches"][matchId]
@@ -445,11 +446,17 @@ bot.on('message', async function(msg) {
           var matchStartDate = matchData["MatchStartTime"]
 
           if(matchStartDate > EPISODE_2_START_TIME_MILLIS){
-            eloArray.push(eloFromCompInfo(matchData))
+            var elo = eloFromCompInfo(matchData)
+            eloArray.push(elo)
 
             var d = new Date(matchStartDate)
             // var day = dateFormat(d, "mm/dd/yy h:MM:ss tt");
             var matchDay = dateFormat(d, "m/d");
+
+            // dataPoints.push({
+            //   x:d,
+            //   y:elo
+            // })
 
             dateArray.push(matchDay)
           }
@@ -701,6 +708,19 @@ bot.on('message', async function(msg) {
         }
         annotations.push(anno)
         lowestEloAnno += 100
+      }
+
+      var act2 = {
+        type: 'line',
+        mode: 'vertical',
+        scaleID: 'x-axis-0',
+        value: 2,
+        borderColor: 'red',
+        borderWidth: 4,
+        label: {
+          enabled: true,
+          content: 'Something changed'
+        }
       }
       return annotations
     }
@@ -1580,7 +1600,7 @@ bot.on('message', async function(msg) {
       }
     }
 
-    if(arg == "playtimealts"){
+    if(arg == "playtimealts" && msg.member.id == 295701594715062272){
       playtimeWithAlts(true, function(playtimeAlts){
         msg.channel.send("`"+playtimeAlts.toString()+"`")
 
@@ -1751,8 +1771,8 @@ bot.on('message', async function(msg) {
               for(var s = 0; s < seasons.length; s++){
                 var season = seasons[s];
                 if(season["ID"] == seasonId){
-                  var episodeName = season["ParentSeasonID"].includes("fcf2c8f4") ? "Episode 1" : "Episode 2"
-                  seasonName = "**"+episodeName+" "+season["Name"]+"**"
+                  // var episodeName = season["ParentSeasonID"].includes("fcf2c8f4") ? "Episode 1" : "Episode 2"
+                  seasonName = "**"/*+episodeName*/+" "+season["Name"]+"** Start: "+season["StartTime"]
                 }
               }
 
@@ -2094,7 +2114,7 @@ function apiCallOptions(accessToken, entitlementsToken, url){
           'Authorization': 'Bearer '+accessToken,
           'X-Riot-Entitlements-JWT': entitlementsToken,
           'X-Riot-ClientPlatform':"ewogICAgInBsYXRmb3JtVHlwZSI6ICJQQyIsCiAgICAicGxhdGZvcm1PUyI6ICJXaW5kb3dzIiwKICAgICJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwKICAgICJwbGF0Zm9ybUNoaXBzZXQiOiAiVW5rbm93biIKfQ==",
-          'X-Riot-ClientVersion':'release-02.03-shipping-8-521855'
+          'X-Riot-ClientVersion':'release-02.04-shipping-21-527201'
       },
   };
   return options
