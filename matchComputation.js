@@ -119,6 +119,12 @@ function computeTotalStats(){
             var defuses = stats["defuses"] == null ? 0 : stats["defuses"]
             var firstBloods = stats["firstBloods"] == null ? 0 : stats["firstBloods"]
             var plants = stats["plants"] == null ? 0 : stats["plants"]
+            var clutches = stats["clutches"] == null ? 0 : stats["clutches"]
+            var killsByNumber = stats["killsByNumber"] == null ? 0 : stats["killsByNumber"]
+
+            if(statsData[subject]["stats"]["killsByNumber"] == undefined){
+              statsData[subject]["stats"]["killsByNumber"] = {"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0}
+            }
 
             var curstats = statsData[subject]["stats"]
             var curscore = curstats["score"]
@@ -131,6 +137,9 @@ function computeTotalStats(){
             var curdefuses = curstats["defuses"] == null ? 0 : curstats["defuses"]
             var curfirstBloods = curstats["firstBloods"] == null ? 0 : curstats["firstBloods"]
             var curplants = curstats["plants"] == null ? 0 : curstats["plants"]
+            var curclutches = curstats["clutches"] == null ? 0 : curstats["plants"]
+            var curkillsbynumber = curstats["killsByNumber"]
+
 
             statsData[subject]["stats"]["score"] = score + curscore
             statsData[subject]["stats"]["roundsPlayed"] = roundsPlayed + curroundsPlayed
@@ -143,6 +152,16 @@ function computeTotalStats(){
             statsData[subject]["stats"]["defuses"] = defuses + curdefuses
             statsData[subject]["stats"]["firstBloods"] = firstBloods + curfirstBloods
             statsData[subject]["stats"]["plants"] = plants + curplants
+            statsData[subject]["stats"]["clutches"] = clutches + curclutches
+
+            statsData[subject]["stats"]["killsByNumber"]["0"] = killsByNumber["0"] + curkillsbynumber["0"]
+            statsData[subject]["stats"]["killsByNumber"]["1"] = killsByNumber["1"] + curkillsbynumber["1"]
+            statsData[subject]["stats"]["killsByNumber"]["2"] = killsByNumber["2"] + curkillsbynumber["2"]
+            statsData[subject]["stats"]["killsByNumber"]["3"] = killsByNumber["3"] + curkillsbynumber["3"]
+            statsData[subject]["stats"]["killsByNumber"]["4"] = killsByNumber["4"] + curkillsbynumber["4"]
+            statsData[subject]["stats"]["killsByNumber"]["5"] = killsByNumber["5"] + curkillsbynumber["5"]
+            statsData[subject]["stats"]["killsByNumber"]["6"] = killsByNumber["6"] + curkillsbynumber["6"]
+
             statsData[subject]["stats"]["kd"] = statsData[subject]["stats"]["kills"] / statsData[subject]["stats"]["deaths"]
             statsData[subject]["stats"]["totalGamesPlayed"] += 1
             if(playerTeam == winTeam){

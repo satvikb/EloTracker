@@ -103,6 +103,7 @@ function processMatchOverviewAnalysis(path, matchData){
 
   let players = matchData["players"]
   var playerData = {}
+  var playerTeams = {}
 
   var blueTeamHighestScore = 0
   var blueTeamHighestScoreSubject = ""
@@ -111,9 +112,12 @@ function processMatchOverviewAnalysis(path, matchData){
   var redTeamHighestScoreSubject = ""
 
   var scores = []
+  // var playersInMatch = new Set()
   for(var i = 0; i < players.length; i++){
     let playerInfo = players[i];
     let subject = playerInfo["subject"]
+    // playersInMatch.add(subject)
+    playerTeams[subject] = playerInfo["teamId"]
     playerData[subject] = {
       "subject":subject,
       "gameName":playerInfo["gameName"],
@@ -155,6 +159,7 @@ function processMatchOverviewAnalysis(path, matchData){
     }
 
     let roundResult = roundData["roundResultCode"]
+    let roundCeremony = roundData["roundCeremony"]
 
     if(roundResult != "Surrendered"){
       var planter = roundData["bombPlanter"]
@@ -165,7 +170,6 @@ function processMatchOverviewAnalysis(path, matchData){
         }
         playerData[planter]["stats"]["plants"] += 1
       }
-
       if(defuser != undefined){
         if(playerData[defuser]["stats"]["defuses"] == undefined){
           playerData[defuser]["stats"]["defuses"] = 0
@@ -175,21 +179,65 @@ function processMatchOverviewAnalysis(path, matchData){
 
       var earlistKillTime = Number.MAX_SAFE_INTEGER
       var earliestKillSubject = ""
+
+      var latestKillTime = 0
+      var latestKillSubject = ""
       // calculate first bloods
       var roundPlayerStats = roundData["playerStats"]
+      // var playersDead = new Set()
       for(var p = 0; p < roundPlayerStats.length; p++){
         var player = roundPlayerStats[p]
         var curSubject = player["subject"]
+
+        if(playerData[curSubject]["stats"]["killsByNumber"] == undefined){
+          playerData[curSubject]["stats"]["killsByNumber"] = {"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0}
+        }
+
+
         var playerKills = player["kills"];
+        var killCount = playerKills.length
+        playerData[curSubject]["stats"]["killsByNumber"][""+killCount] += 1
+
         for(var k = 0; k < playerKills.length; k++){
           var killData = playerKills[k]
           var killTime = killData["roundTime"]
+          // playersDead.add(killData["victim"])
           if(killTime < earlistKillTime){
             earlistKillTime = killTime
             earliestKillSubject = curSubject
           }
+
+          if(killTime > latestKillTime && playerTeams[curSubject] == winningTeam){
+            latestKillTime = killTime
+            latestKillSubject = curSubject
+          }
         }
       }
+
+      // get who survived
+      if(roundCeremony == "CeremonyClutch"){
+        // let survived = new Set([...playersInMatch].filter(x => !playersDead.has(x)));
+        //
+        // // loop
+        // var surArr = Array.from(survived)
+        // console.log("clutch1 :"+surArr+"_"+surArr.length)
+        console.log("Clutcher: "+latestKillSubject)
+        // for(var i = 0; i < surArr.length; i++){
+        //   var sur = surArr[i]
+        //   // check how many teammates of winning team is alive? should always be 1...
+        //   // check if sur.team == winningTeam
+          if(playerTeams[latestKillSubject] == winningTeam){
+            if(playerData[latestKillSubject]["stats"]["clutches"] == undefined){
+              playerData[latestKillSubject]["stats"]["clutches"] = 0
+            }
+            playerData[latestKillSubject]["stats"]["clutches"] += 1
+            console.log("clutch2")
+
+          }
+        // }
+
+      }
+
 
       if(playerData[earliestKillSubject]["stats"]["firstBloods"] == undefined){
         playerData[earliestKillSubject]["stats"]["firstBloods"] = 0
