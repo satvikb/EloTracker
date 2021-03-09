@@ -46,7 +46,7 @@ bot.on('message', async function(msg) {
     var arg = ((args[0].toString()).toLowerCase());
 
     if(arg == CONSTANTS.COMMANDS.ELO){
-      var userId = userIdFromAlias(args[1])
+      var userId = userIdFromAlias(args[1].toLowerCase())
       if(userId != null){
         MATCH_HANDLER.matchHistory(userId, async function(history){
           var numToShow = 3;
@@ -74,13 +74,13 @@ bot.on('message', async function(msg) {
       }
     }
     if(arg == CONSTANTS.COMMANDS.STATS){
-      var userId = userIdFromAlias(args[1])
+      var userId = userIdFromAlias(args[1].toLowerCase())
       if(userId != null){
         DISCORD_HANDLER.sendEmbedForPlayerStats(msg, userId)
       }
     }
     if(arg == CONSTANTS.COMMANDS.HISTORY){
-      var userId = userIdFromAlias(args[1])
+      var userId = userIdFromAlias(args[1].toLowerCase())
       if(userId != null){
         MATCH_HANDLER.matchHistory(userId, async function(history){
           var userData = MATCH_COMPUTATION.getStatsData()[userId]
@@ -90,10 +90,16 @@ bot.on('message', async function(msg) {
       }
     }
     if(arg == CONSTANTS.COMMANDS.PROCESSALL){
-      MATCH_PROCESSING.processAllGames()
+      if(CONSTANTS.DISCORD_ADMIN_USERS.includes(msg.member.id)){
+        console.log("Processing")
+        MATCH_PROCESSING.processAllGames()
+      }
     }
     if(arg == CONSTANTS.COMMANDS.COMPUTEALL){
-      MATCH_COMPUTATION.computeAggregate()
+      if(CONSTANTS.DISCORD_ADMIN_USERS.includes(msg.member.id)){
+        MATCH_COMPUTATION.computeAggregate()
+        console.log("Computed")
+      }
     }
     if(arg == CONSTANTS.COMMANDS.SETCOLOR){
       var colorInput = args[1]
