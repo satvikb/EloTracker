@@ -35,7 +35,6 @@ function processMatchData(matchData, force){
     }
     if(processedMatchesData[matchId][CONSTANTS.PROCESSING.PARTY] == undefined){
       processedMatchesData[matchId][CONSTANTS.PROCESSING.PARTY] = 1;
-      console.log("Party Null")
       processMatchPartyAnalysis(folderPath, matchData)
     }
     CONSTANTS.writeJSONFile('private/processedMatches.json', processedMatchesData)
@@ -214,30 +213,14 @@ function processMatchOverviewAnalysis(path, matchData){
         }
       }
 
-      // get who survived
       if(roundCeremony == "CeremonyClutch"){
-        // let survived = new Set([...playersInMatch].filter(x => !playersDead.has(x)));
-        //
-        // // loop
-        // var surArr = Array.from(survived)
-        // console.log("clutch1 :"+surArr+"_"+surArr.length)
-        console.log("Clutcher: "+latestKillSubject)
-        // for(var i = 0; i < surArr.length; i++){
-        //   var sur = surArr[i]
-        //   // check how many teammates of winning team is alive? should always be 1...
-        //   // check if sur.team == winningTeam
-          if(playerTeams[latestKillSubject] == winningTeam){
-            if(playerData[latestKillSubject]["stats"]["clutches"] == undefined){
-              playerData[latestKillSubject]["stats"]["clutches"] = 0
-            }
-            playerData[latestKillSubject]["stats"]["clutches"] += 1
-            console.log("clutch2")
-
+        if(playerTeams[latestKillSubject] == winningTeam){
+          if(playerData[latestKillSubject]["stats"]["clutches"] == undefined){
+            playerData[latestKillSubject]["stats"]["clutches"] = 0
           }
-        // }
-
+          playerData[latestKillSubject]["stats"]["clutches"] += 1
+        }
       }
-
 
       if(playerData[earliestKillSubject]["stats"]["firstBloods"] == undefined){
         playerData[earliestKillSubject]["stats"]["firstBloods"] = 0
@@ -419,6 +402,9 @@ function processMatchPartyAnalysis(path, matchData){
   var players = matchData["players"]
   var teamInfo = matchData["teams"]
 
+  var mapAssetPath = matchData["matchInfo"]["mapId"].split("/")
+  var mapRawAsset = mapAssetPath[mapAssetPath.length-1]
+
   function getTeamInfoFromId(teamId){
     for(var i = 0; i < teamInfo.length; i++){
       if(teamInfo[i]["teamId"] == teamId){
@@ -457,7 +443,7 @@ function processMatchPartyAnalysis(path, matchData){
       partyData[partyId]["totalDeaths"] += playerStats["deaths"]
       partyData[partyId]["totalAssists"] += playerStats["assists"]
       partyData[partyId]["playtimeMillis"] = playerStats["playtimeMillis"] // will be set multiple times, but should be the same
-
+      partyData[partyId]["mapKey"] = mapRawAsset
       partyData[partyId]["members"].push(userId)
     }
   }catch(err){

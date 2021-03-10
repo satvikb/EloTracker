@@ -166,6 +166,7 @@ function downloadMatchIDs(userId, matchIDs){
           PROCESSING.processMatchData(matchData)
         }
         CONSTANTS.writeJSONFile('private/matchesDownloaded.json', matchesDownloadedData)
+        MATCH_COMPUTATION.computeAggregate()
       })
     })
   }

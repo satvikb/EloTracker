@@ -14,6 +14,10 @@ function getStatsData(){
   return totalStatsData
 }
 
+function getPartyData(){
+  return totalPartyData
+}
+
 function computeAggregate(){
   computeTotalStats()
 }
@@ -75,7 +79,8 @@ function computeTotalStats(){
                   "grenadeCasts": 0,
                   "ability1Casts": 0,
                   "ability2Casts": 0,
-                  "ultimateCasts": 0
+                  "ultimateCasts": 0,
+                  "statsByAgent":{}
                 }
               }
             }
@@ -110,6 +115,8 @@ function computeTotalStats(){
             var roundsPlayed = stats["roundsPlayed"]
 
             var scoreKey = playerTeam.toLowerCase()+"Score"
+            var agentKey = CONSTANTS.CONTENT.AGENT_NAMES[player["characterId"].toLowerCase()]
+
             var roundsWon = matchOverviewData["gameInfo"][scoreKey]
             roundsWon = roundsWon == undefined ? 0 : roundsWon
             var kills = stats["kills"]
@@ -167,15 +174,38 @@ function computeTotalStats(){
             if(playerTeam == winTeam){
               statsData[subject]["stats"]["totalGamesWon"] += 1
             }
+
+            if(statsData[subject]["stats"]["statsByAgent"] == undefined){
+              statsData[subject]["stats"]["statsByAgent"] = {}
+            }
+            if(statsData[subject]["stats"]["statsByAgent"][agentKey] == undefined){
+              statsData[subject]["stats"]["statsByAgent"][agentKey] = {
+                "kills":0,
+                "deaths":0,
+                "assists":0,
+                "playtimeMillis":0,
+                "gamesWon":0,
+                "gamesPlayed":0,
+                "score":0
+              }
+            }
+            statsData[subject]["stats"]["statsByAgent"][agentKey]["kills"] += kills
+            statsData[subject]["stats"]["statsByAgent"][agentKey]["deaths"] += deaths
+            statsData[subject]["stats"]["statsByAgent"][agentKey]["assists"] += assists
+            statsData[subject]["stats"]["statsByAgent"][agentKey]["playtimeMillis"] += playtimeMillis
+            statsData[subject]["stats"]["statsByAgent"][agentKey]["gamesPlayed"] += 1
+            if(playerTeam == winTeam){
+              statsData[subject]["stats"]["statsByAgent"][agentKey]["gamesWon"] += 1
+            }
+
+
           }
 
           let playerStatsData = CONSTANTS.readJSONFile(processedPath + matchId + "/stats.json")
 
           let util = playerStatsData["util"]
           for (var subject in util) {
-            // check if the property/key is defined in the object itself, not in parent
             if (util.hasOwnProperty(subject)) {
-              // console.log(subject, dictionary[subject]);
               let utilEntity = util[subject];
               if(statsData[subject] == undefined){
                 statsData[subject] = {
@@ -196,9 +226,7 @@ function computeTotalStats(){
 
           let hits = playerStatsData["hits"]
           for (var subject in hits) {
-            // check if the property/key is defined in the object itself, not in parent
             if (hits.hasOwnProperty(subject)) {
-              // console.log(subject, dictionary[subject]);
               let hitsEntity = hits[subject];
               if(statsData[subject] == undefined){
                 statsData[subject] = {
@@ -218,6 +246,59 @@ function computeTotalStats(){
 
           let matchPartyData = CONSTANTS.readJSONFile(processedPath + matchId + "/party.json")
           // TODO
+          for(var partyId in matchPartyData){
+            if (matchPartyData.hasOwnProperty(partyId)) {
+              var curPartyData = matchPartyData[partyId]
+              var members = curPartyData["members"]
+
+              members.sort()
+              var computeKey = members.toString()
+              if(partyData[computeKey] == undefined){
+                partyData[computeKey] = {
+                  "playtimeMillis": 0,
+                  "totalKills": 0,
+                  "totalDeaths": 0,
+                  "totalAssists": 0,
+                  "members": members,
+                  "roundsPlayed": 0,
+                  "roundsWon": 0,
+                  "gamesPlayed":0,
+                  "gamesWon":0,
+                  "gamesByMap":{}
+                }
+              }
+
+              var playtime = curPartyData["playtimeMillis"]
+              var kills = curPartyData["totalKills"]
+              var deaths = curPartyData["totalDeaths"]
+              var assists = curPartyData["totalAssists"]
+              var roundsPlayed = curPartyData["roundsPlayed"]
+              var roundsWon = curPartyData["roundsWon"]
+              var wonGame = curPartyData["wonGame"]
+              var partyMap = curPartyData["mapKey"]
+              var mapName = CONSTANTS.CONTENT.MAP_NAMES[partyMap.toLowerCase()]
+
+              partyData[computeKey]["playtimeMillis"] += playtime
+              partyData[computeKey]["totalKills"] += kills
+              partyData[computeKey]["totalDeaths"] += deaths
+              partyData[computeKey]["totalAssists"] += assists
+              partyData[computeKey]["roundsPlayed"] += roundsPlayed
+              partyData[computeKey]["roundsWon"] += roundsWon
+              partyData[computeKey]["gamesWon"] += (wonGame ? 1 : 0)
+              partyData[computeKey]["gamesPlayed"] += 1
+
+              if(partyData[computeKey]["gamesByMap"][partyMap] == undefined){
+                partyData[computeKey]["gamesByMap"][partyMap] = {
+                  "mapName":mapName,
+                  "gamesWon":0,
+                  "gamesPlayed":0
+                }
+              }
+              partyData[computeKey]["gamesByMap"][partyMap]["gamesPlayed"] += 1
+              partyData[computeKey]["gamesByMap"][partyMap]["gamesWon"] += (wonGame ? 1 : 0)
+
+            }
+          }
         }catch(err){
           console.log("TOTAL ERR "+err)
         }
@@ -225,11 +306,17 @@ function computeTotalStats(){
     }
   }
 
-  totalStatsData = statsData;
   totalPartyData = partyData;
 
   // TODO remove the data for users with less than N games played
-  CONSTANTS.writeJSONFile('private/totalStats/stats.json', statsData)
+  var filteredStats = Object.keys(statsData).reduce(function (filteredStats, key) {
+    if (statsData[key]["stats"]["totalGamesPlayed"] > 3) filteredStats[key] = statsData[key];
+    return filteredStats;
+}, {});
+
+  totalStatsData = filteredStats;//statsData;
+
+  CONSTANTS.writeJSONFile('private/totalStats/stats.json', filteredStats)
   CONSTANTS.writeJSONFile('private/totalStats/party.json', partyData)
 }
 function includeMatchInComputation(matchOverviewData){
@@ -238,5 +325,6 @@ function includeMatchInComputation(matchOverviewData){
 }
 module.exports = {
   computeAggregate: computeAggregate,
-  getStatsData: getStatsData
+  getStatsData: getStatsData,
+  getPartyData: getPartyData
 }

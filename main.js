@@ -89,6 +89,32 @@ bot.on('message', async function(msg) {
         })
       }
     }
+    if(arg == CONSTANTS.COMMANDS.PARTY){
+      var userAliases = args[1].toLowerCase().split(",")
+      var members = []
+      for(var i = 0; i < userAliases.length; i++){
+        var userId = userIdFromAlias(userAliases[i])
+        members.push(userId)
+      }
+      var key = members.sort().toString()
+      var allParty = MATCH_COMPUTATION.getPartyData()
+      var partyData = allParty[key]
+      if(partyData != undefined){
+        DISCORD_HANDLER.sendEmbedForPartyStats(msg, partyData)
+      }else{
+        msg.channel.send("User has never solo queued.")
+      }
+      // msg.channel.send(JSON.stringify(partyData))
+    }
+    if(arg == CONSTANTS.COMMANDS.AGENTWINLOSS || arg == CONSTANTS.COMMANDS.AWL){
+      var userId = userIdFromAlias(args[1].toLowerCase())
+      if(userId != null){
+        var statsByAgent = MATCH_COMPUTATION.getStatsData()[userId]["stats"]["statsByAgent"]
+        console.log("STA "+JSON.stringify(statsByAgent))
+        DISCORD_HANDLER.sendMessageForAgentWinLoss(msg, userId, statsByAgent, msg.member.id)
+      }
+
+    }
     if(arg == CONSTANTS.COMMANDS.PROCESSALL){
       if(CONSTANTS.DISCORD_ADMIN_USERS.includes(msg.member.id)){
         console.log("Processing")

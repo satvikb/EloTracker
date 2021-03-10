@@ -269,6 +269,47 @@ async function sendEmbedForPlayerStats(msg, userId){
     var sent = await msg.channel.send({embed})
   }
 }
+async function sendEmbedForPartyStats(msg, partyStats){
+  var discordId = msg.member.id
+  let userColor = userColors[discordId] == undefined ? CONSTANTS.DEFAULT_MSG_COLOR : userColors[discordId]
+
+  var statsObject = MATCH_COMPUTATION.getStatsData()
+  var partyNameText = ""
+  var mems = partyStats["members"]
+  for(var i = 0; i < mems.length; i++){
+    var mem = mems[i]
+    var userStats = statsObject[mem]
+      if(userStats != undefined){
+      partyNameText += userStats["gameName"]+"#"+userStats["tagLine"]+(i < mems.length - 1 ? " / " : "")
+    }
+  }
+  const embed = new discord.MessageEmbed()
+        .setColor(userColor)
+        .setTitle('Party Stats')
+        // .setURL('https://discord.js.org/')
+        .setAuthor(partyNameText, '', '')
+
+  embed.addField("**Playtime**", (partyStats["playtimeMillis"] / (3600*1000)).toFixed(2)+"h", true)
+  embed.addField("**Total Kills**", partyStats["totalKills"], true)
+  embed.addField("**Total Deaths**", partyStats["totalDeaths"], true)
+  embed.addField("**Total Assists**", partyStats["totalAssists"], true)
+  embed.addField('\u200b', '\u200b')
+  embed.addField("**Games**", partyStats["gamesPlayed"], true)
+  embed.addField("**Games Won**", partyStats["gamesWon"], true)
+  embed.addField("**Rounds**", partyStats["roundsPlayed"], true)
+  embed.addField("**Game Win Rate**", ((partyStats["gamesWon"] / partyStats["gamesPlayed"])*100).toFixed(2)+"%", true)
+  embed.addField("**Round Win Rate**", ((partyStats["roundsWon"] / partyStats["roundsPlayed"])*100).toFixed(2)+"%", true)
+  embed.addField('\u200b', '\u200b')
+
+  for(var mapId in partyStats["gamesByMap"]){
+    if(partyStats["gamesByMap"].hasOwnProperty(mapId)){
+      embed.addField("**"+partyStats["gamesByMap"][mapId]["mapName"]+" Win Rate** ("+partyStats["gamesByMap"][mapId]["gamesPlayed"]+")", ((partyStats["gamesByMap"][mapId]["gamesWon"] / partyStats["gamesByMap"][mapId]["gamesPlayed"])*100).toFixed(2)+"%", true)
+    }
+  }
+
+  var sent = await msg.channel.send({embed})
+
+}
 function sendMessageForMatchHistory(msg, userId, eloHistory, args, userFullName, discordId){
   var numToShow = 3;
   var debugMode = false
@@ -458,7 +499,23 @@ function sendMessageForMatchHistory(msg, userId, eloHistory, args, userFullName,
   var table = TABLE_HANDLER.buildAsciiTable("MATCH HISTORY FOR "+userFullName+" ("+latestElo+" RP)", tableHeaders, tableData, false, false)
   msg.channel.send(table)
 }
+function sendMessageForAgentWinLoss(msg, userId, statsByAgent, discordId){
+  if(statsByAgent != undefined){
+    var tableData = []
+    for(var agentName in statsByAgent){
+      if(statsByAgent.hasOwnProperty(agentName)){
+        var s = statsByAgent[agentName]
+        tableData.push([agentName, s["gamesWon"], s["gamesPlayed"], ((s["gamesWon"] / s["gamesPlayed"])*100).toFixed(2)+"%", s["score"], s["kills"], s["deaths"], s["assists"], (s["kills"]/s["deaths"]).toFixed(2), (s["playtimeMillis"] / (3600*1000)).toFixed(2)+"h"])
+      }
+    }
 
+    var tableHeaders = ["Agent", "Won", "Played", "Win Rate", "Score", "Kills", "Deaths", "Assists", "K/D", "Playtime"]
+    var table = TABLE_HANDLER.buildAsciiTable("Win/Loss per agent", tableHeaders, tableData, false, false)
+    msg.channel.send(table)
+  }else{
+    msg.channel.send("No data.")
+  }
+}
 function setUserColor(discordUserId, color){
   userColors[discordUserId] = color
   CONSTANTS.writeJSONFile('private/userColors.json', userColors)
@@ -466,5 +523,7 @@ function setUserColor(discordUserId, color){
 module.exports = {
   sendEmbedForEloHistory:sendEmbedForEloHistory,
   sendEmbedForPlayerStats:sendEmbedForPlayerStats,
-  sendMessageForMatchHistory:sendMessageForMatchHistory
+  sendEmbedForPartyStats:sendEmbedForPartyStats,
+  sendMessageForMatchHistory:sendMessageForMatchHistory,
+  sendMessageForAgentWinLoss:sendMessageForAgentWinLoss
 }

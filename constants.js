@@ -111,10 +111,13 @@ module.exports = {
     ELO:"elo",
     STATS:"stats",
     PLAYTIME:"playtime",
+    PARTY:"party",
     PROCESSALL:"processall",
     COMPUTEALL:"computeall",
     SETCOLOR:"setcolor",
-    HISTORY:"history"
+    HISTORY:"history",
+    AGENTWINLOSS:"agentwinloss",
+    AWL:"awl"
   },
   DISCORD_ADMIN_USERS:["295701594715062272"],
   CONTENT:{
