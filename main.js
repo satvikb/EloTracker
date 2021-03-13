@@ -18,6 +18,7 @@ var MATCH_HANDLER = require('./matchHandler');
 var MATCH_PROCESSING = require('./matchProcessing');
 var MATCH_COMPUTATION = require('./matchComputation');
 var DISCORD_HANDLER = require('./discordHandler');
+var LOG = require('./logging');
 
 let userColorsData = readJSONFile('private/userColors.json');
 
@@ -44,7 +45,7 @@ bot.on('message', async function(msg) {
     let argString = msg.content.substring(CONSTANTS.PREFIX.length)
     let args = argString.split(" "); //returns the text after the prefix smart move by me nc
     var arg = ((args[0].toString()).toLowerCase());
-
+    LOG.log(4, "Got command: "+arg)
     if(arg == CONSTANTS.COMMANDS.ELO){
       var userId = userIdFromAlias(args[1].toLowerCase())
       if(userId != null){
@@ -65,11 +66,15 @@ bot.on('message', async function(msg) {
           }
 
           var userData = MATCH_COMPUTATION.getStatsData()[userId]
-          var fullName = userData["gameName"]+"#"+userData["tagLine"]
-
-          DISCORD_HANDLER.sendEmbedForEloHistory(msg, history, args, fullName)
+          var fullName = null
+          if(userData != null){
+            fullName = userData["gameName"]+"#"+userData["tagLine"]
+          }
+          LOG.log(3, "Sending Embed for Elo History for "+fullName)
+          DISCORD_HANDLER.sendEmbedForEloHistory(msg, history, args, fullName == null ? args[1] : fullName)
         })
       }else{
+        LOG.log(0, "User was not found for "+arg+" command with alias: "+args[1]+". UserID: "+userId)
         msg.channel.send("User not found. Make sure alias is added.")
       }
     }
@@ -82,11 +87,15 @@ bot.on('message', async function(msg) {
     if(arg == CONSTANTS.COMMANDS.HISTORY){
       var userId = userIdFromAlias(args[1].toLowerCase())
       if(userId != null){
-        MATCH_HANDLER.matchHistory(userId, async function(history){
-          var userData = MATCH_COMPUTATION.getStatsData()[userId]
+        var userData = MATCH_COMPUTATION.getStatsData()[userId]
+
+        if(userData != null){
           var fullName = userData["gameName"]+"#"+userData["tagLine"]
-          DISCORD_HANDLER.sendMessageForMatchHistory(msg, userId, history, args, fullName, msg.member.id)
-        })
+          MATCH_HANDLER.matchHistory(userId, async function(history){
+          }, async function(history){
+            DISCORD_HANDLER.sendMessageForMatchHistory(msg, userId, history, args, fullName, msg.member.id)
+          })
+        }
       }
     }
     if(arg == CONSTANTS.COMMANDS.PARTY){
@@ -117,14 +126,12 @@ bot.on('message', async function(msg) {
     }
     if(arg == CONSTANTS.COMMANDS.PROCESSALL){
       if(CONSTANTS.DISCORD_ADMIN_USERS.includes(msg.member.id)){
-        console.log("Processing")
         MATCH_PROCESSING.processAllGames()
       }
     }
     if(arg == CONSTANTS.COMMANDS.COMPUTEALL){
       if(CONSTANTS.DISCORD_ADMIN_USERS.includes(msg.member.id)){
         MATCH_COMPUTATION.computeAggregate()
-        console.log("Computed")
       }
     }
     if(arg == CONSTANTS.COMMANDS.SETCOLOR){
@@ -139,4 +146,27 @@ bot.on('message', async function(msg) {
     }
   }
 })
+
+cron.schedule('22 * * * *', async () => {
+  LOG.log(2, '[AUTO] Getting Elo History for all users');
+  for (var alias in subjectIdAliases) {
+    // check if the property/key is defined in the object itself, not in parent
+    if (subjectIdAliases.hasOwnProperty(alias)) {
+      var userId = subjectIdAliases[alias]
+      MATCH_HANDLER.matchHistory(userId, async function(history){
+        LOG.log(3, "[AUTO] Getting ELO for "+alias+" UID: "+userId)
+        bot.channels.cache.get("798343660001165332").send("[AUTO] updated user elo for "+userId);
+      });
+      await sleep(500);
+    }
+  }
+  MATCH_COMPUTATION.computeAggregate()
+});
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 bot.login(process.env.DISCORD_KEY);

@@ -25,7 +25,8 @@ function getCompEloHistoryList(compUpdatesMatches){
         // var day = dateFormat(d, "mm/dd/yy h:MM:ss tt");
         var matchDay = dateFormat(d, "m/d");
 
-        dateArray.push(matchDay)
+        // dateArray.push(matchDay)
+        dateArray.push(d)
       }
     }
   }
@@ -55,15 +56,38 @@ function makeAnnotationsForEloMarkers(lowest, highest){
         content:CONSTANTS.RANKS[((lowestEloAnno+300)/100)+""],
         position:"start",
         font:{
-          size:12,
+          size:9,
           color:"#888",
         },
-        xAdjust:-(CONSTANTS.CHART.WIDTH/2)+55
+        xAdjust:-(CONSTANTS.CHART.WIDTH/2)+65
       }
     }
     annotations.push(anno)
     lowestEloAnno += 100
   }
+
+
+  var act2Marker = {
+    type: 'line',
+    scaleID: 'x-axis-0',
+    mode:"vertical",
+    value: new Date(1614694500000),
+    borderColor: 'blue',
+    borderWidth: 1,
+    label:{
+      enabled: true,
+      content:"ACT 2 START",
+      position:"start",
+      font:{
+        size:12,
+        color:"#888",
+      },
+      yAdjust:50
+    }
+  }
+  annotations.push(act2Marker)
+
+
   return annotations
 }
 function buildEloChart(eloData, userName, userColor){
@@ -109,6 +133,16 @@ function buildEloChart(eloData, userName, userColor){
           //   return parseInt(value) % 50 == 0 ? true : false;
           // }
         }
+      }],
+      "xAxes":[{
+        type:'time',
+        time:{
+          unit:'day',
+          unitStepSize:1,
+          displayFormats: {
+           'day': 'M/D'
+        }
+        }
       }]
     },
     "annotation":{
@@ -130,7 +164,9 @@ function buildEloChart(eloData, userName, userColor){
     "borderColor": userColor,
     "backgroundColor": userColor,
     "fill": false,
-    "data": eloData["elo"].reverse()
+    "data": eloData["elo"].reverse(),
+    "borderWidth":1,
+    "pointRadius":1
   }
   // TODO negative dataset
   chartDatasetArray.push(datasetObject)
@@ -145,7 +181,6 @@ function buildEloChart(eloData, userName, userColor){
     },
     "options":chartOptions
   }
-  // console.log("CHART: "+JSON.stringify(chartObject))
   return chartObject
 }
 function chartURLFromObject(chartObject, completion){

@@ -2,6 +2,7 @@ var CHART_HANDLER = require('./chartHandler');
 var TABLE_HANDLER = require('./tableHandler');
 var MATCH_HANDLER = require('./matchHandler');
 var MATCH_COMPUTATION = require('./matchComputation');
+var LOG = require('./logging');
 
 var CONSTANTS = require('./constants');
 var dateFormat = require('dateformat');
@@ -54,7 +55,7 @@ async function sendEmbedForEloHistory(msg, eloHistory, args, userFullName){
 
   var numMatchesToShow = Math.min(numToShow, numOfCompMatchesAvailable)
   var compGamesShowed = 0
-  console.log("Num to show: "+numMatchesToShow+"__"+numToShow+"__"+numOfCompMatchesAvailable+"__"+matchData.length)
+  LOG.log(4, "Show ELO embed. Number of fields: "+numMatchesToShow+". Number of competitive matches: "+numOfCompMatchesAvailable)
 
   var useAlternateDisplayMethod = numMatchesToShow > 20 // discord has hard limit on embeds
   var alternateDisplayEmbeds = []
@@ -267,6 +268,8 @@ async function sendEmbedForPlayerStats(msg, userId){
     embed.addField("**HS %**", ((hs/(hs+bs+ls))*100).toFixed(2)+"%", true)
 
     var sent = await msg.channel.send({embed})
+  }else{
+    msg.channel.send("Not enough game data to show stats. Play more games.")
   }
 }
 async function sendEmbedForPartyStats(msg, partyStats){
@@ -354,7 +357,6 @@ function sendMessageForMatchHistory(msg, userId, eloHistory, args, userFullName,
 
   var numMatchesToShow = Math.min(numToShow, numOfCompMatchesAvailable)
   var compGamesShowed = 0
-  console.log("Num to show: "+numMatchesToShow+"__"+numToShow+"__"+numOfCompMatchesAvailable+"__"+matchData.length)
 
   var tableData = []
   for(var i = 0; i < matchData.length; i++){

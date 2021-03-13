@@ -4,6 +4,7 @@ const fs = require('fs');
 
 var CONSTANTS = require('./constants');
 var PROCESSING = require('./matchProcessing');
+var LOG = require('./logging');
 
 // let rawUserStats = fs.readFileSync('private/totalStats/users.json');
 var totalStatsData = CONSTANTS.readJSONFile('private/totalStats/stats.json')
@@ -36,10 +37,15 @@ function computeTotalStats(){
       if(processInfo["gameStartMillis"] > CONSTANTS.EPISODE_2_ACT2_START_TIME_MILLIS){
         try{
           // TODO find a way to only process comps
-          // let rawStatsData = fs.readFileSync(processedPath + filename + "/stats.json");
-          let matchOverviewData = CONSTANTS.readJSONFile(processedPath + matchId + "/overview.json")
+          var overviewPath = processedPath + matchId + "/overview.json"
+          if(!fs.existsSync(overviewPath)){
+            LOG.log(2, "Match overview DNE. Procesing match for computation "+matchId)
+            PROCESSING.processMatchData(CONSTANTS.readJSONFile(CONSTANTS.PATHS.RAW_MATCHES+matchId+'.json'), true)
+          }
+          let matchOverviewData = CONSTANTS.readJSONFile(overviewPath)
 
           if(!includeMatchInComputation(matchOverviewData)){
+            LOG.log(7, "Skipping match in computation for "+matchId)
             continue
           }
 
@@ -54,6 +60,7 @@ function computeTotalStats(){
             var stats = player["stats"]
 
             if(statsData[subject] == undefined){
+              LOG.log(6, "Creating new stats data object for player "+subject)
               statsData[subject] = {
                 "gameName":"",
                 "tagLine":"",
@@ -192,6 +199,7 @@ function computeTotalStats(){
             statsData[subject]["stats"]["statsByAgent"][agentKey]["kills"] += kills
             statsData[subject]["stats"]["statsByAgent"][agentKey]["deaths"] += deaths
             statsData[subject]["stats"]["statsByAgent"][agentKey]["assists"] += assists
+            statsData[subject]["stats"]["statsByAgent"][agentKey]["score"] += score
             statsData[subject]["stats"]["statsByAgent"][agentKey]["playtimeMillis"] += playtimeMillis
             statsData[subject]["stats"]["statsByAgent"][agentKey]["gamesPlayed"] += 1
             if(playerTeam == winTeam){
@@ -200,6 +208,7 @@ function computeTotalStats(){
 
 
           }
+          LOG.log(5, "Updated overview for players in match.")
 
           let playerStatsData = CONSTANTS.readJSONFile(processedPath + matchId + "/stats.json")
 
@@ -223,6 +232,7 @@ function computeTotalStats(){
               statsData[subject]["stats"]["ultimateCasts"] += utilEntity["ultimateCasts"];
             }
           }
+          LOG.log(5, "Updated util for players in match.")
 
           let hits = playerStatsData["hits"]
           for (var subject in hits) {
@@ -242,10 +252,10 @@ function computeTotalStats(){
               statsData[subject]["stats"]["legshots"] += hitsEntity["legshots"];
             }
           }
+          LOG.log(5, "Updated hits for players in match.")
 
 
           let matchPartyData = CONSTANTS.readJSONFile(processedPath + matchId + "/party.json")
-          // TODO
           for(var partyId in matchPartyData){
             if (matchPartyData.hasOwnProperty(partyId)) {
               var curPartyData = matchPartyData[partyId]
@@ -299,8 +309,11 @@ function computeTotalStats(){
 
             }
           }
+          LOG.log(5, "Updated party for players in match.")
+
+          LOG.log(4, "Computation done for match "+matchId)
         }catch(err){
-          console.log("TOTAL ERR "+err)
+          LOG.log(0, "Error in computation for match: "+err)
         }
       }
     }
@@ -312,12 +325,13 @@ function computeTotalStats(){
   var filteredStats = Object.keys(statsData).reduce(function (filteredStats, key) {
     if (statsData[key]["stats"]["totalGamesPlayed"] > 3) filteredStats[key] = statsData[key];
     return filteredStats;
-}, {});
+  }, {});
 
   totalStatsData = filteredStats;//statsData;
 
   CONSTANTS.writeJSONFile('private/totalStats/stats.json', filteredStats)
   CONSTANTS.writeJSONFile('private/totalStats/party.json', partyData)
+  LOG.log(3, "Computation for all matches done")
 }
 function includeMatchInComputation(matchOverviewData){
   var gameInfo = matchOverviewData["gameInfo"]

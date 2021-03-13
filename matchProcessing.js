@@ -1,6 +1,7 @@
 const fs = require('fs');
 
 var CONSTANTS = require('./constants');
+var LOG = require('./logging');
 
 var processedMatchesData = CONSTANTS.readJSONFile('private/processedMatches.json');
 
@@ -9,17 +10,18 @@ function processMatchData(matchData, force){
 
   if(shouldProcessMatchData(matchData) == true){
     if(processedMatchesData[matchId] == undefined || force){
+      LOG.log(6, "Force processing match "+matchId)
       processedMatchesData[matchId] = {}
     }
 
     let folderPath = CONSTANTS.PATHS.PROCESSED_MATCHES+matchId
     if (!fs.existsSync(folderPath)){
+      LOG.log(5, "Making folder for processing "+folderPath)
       fs.mkdirSync(folderPath);
     }
     //a9dcccc3-051b-494f-b62a-4bfe1d798106
     let matchStartTime = matchData["matchInfo"]["gameStartMillis"]
     processedMatchesData[matchId]["gameStartMillis"] = matchStartTime
-    console.log("Processing "+matchId+"_"+processedMatchesData[matchId][CONSTANTS.PROCESSING.PARTY])
 
     if(processedMatchesData[matchId][CONSTANTS.PROCESSING.STAT] == undefined){
       processedMatchesData[matchId][CONSTANTS.PROCESSING.STAT] = 1;
@@ -38,7 +40,9 @@ function processMatchData(matchData, force){
       processMatchPartyAnalysis(folderPath, matchData)
     }
     CONSTANTS.writeJSONFile('private/processedMatches.json', processedMatchesData)
+    LOG.log(4, "Updated processed matches file")
   }else{
+    LOG.log(6, "Not processing match "+matchId)
   }
 }
 function processMatchStatAnalysis(path, matchData){
@@ -47,6 +51,7 @@ function processMatchStatAnalysis(path, matchData){
 
   var hitsData = {}
   var utilData = {}
+
   for(var i = 0; i < rounds.length; i++){
     let roundData = rounds[i];
     let roundPlayerStats = roundData["playerStats"];
@@ -94,6 +99,7 @@ function processMatchStatAnalysis(path, matchData){
     "util":utilData
   }
   CONSTANTS.writeJSONFile(path+'/stats.json', finalData)
+  LOG.log(4, "Processed stats analysis "+path)
 }
 function processMatchOverviewAnalysis(path, matchData){
   var matchID = matchData["matchInfo"]["matchId"]
@@ -263,6 +269,7 @@ function processMatchOverviewAnalysis(path, matchData){
     "gameInfo":gameInfoData
   }
   CONSTANTS.writeJSONFile(path+'/overview.json', finalUserData)
+  LOG.log(4, "Processed overview analysis "+path)
 }
 function processMatchRoundsAnalysis(path, matchData){
   var allRoundDataFinal = {}
@@ -395,6 +402,7 @@ function processMatchRoundsAnalysis(path, matchData){
 
   allRoundDataFinal["playerCharacters"] = playerCharacters
   CONSTANTS.writeJSONFile(path+'/roundStats.json', allRoundDataFinal)
+  LOG.log(4, "Processed round analysis "+path)
 }
 function processMatchPartyAnalysis(path, matchData){
   var partyData = {}
@@ -450,7 +458,7 @@ function processMatchPartyAnalysis(path, matchData){
     console.log(err)
   }
   CONSTANTS.writeJSONFile(path+'/party.json', partyData)
-
+  LOG.log(4, "Processed party analysis "+path)
 }
 function shouldProcessMatchData(matchData){
   let qId = matchData["matchInfo"]["queueID"]
@@ -458,6 +466,7 @@ function shouldProcessMatchData(matchData){
   return qId == "competitive" && startTime > CONSTANTS.EPISODE_2_ACT2_START_TIME_MILLIS
 }
 function readAllRawMatchData(matchDataCallback, completion){
+  LOG.log(4, "Reading all raw match data")
   fs.readdir(CONSTANTS.PATHS.RAW_MATCHES, function(err, filenames) {
     if (err) {
       onError(err);
@@ -473,7 +482,7 @@ function readAllRawMatchData(matchDataCallback, completion){
 
       }
     })
-    console.log("Read all done")
+    LOG.log(4, "Raw read all matches done")
     completion()
   })
 }
@@ -481,7 +490,7 @@ function processAllGames(){
   readAllRawMatchData(function(matchID, matchData){
     processMatchData(matchData, true)
   }, function(){
-    console.log("Done processing all games")
+    LOG.log(3, "Done processing all games")
   })
 }
 function getProcessedMatchesData(){
