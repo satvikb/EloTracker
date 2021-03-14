@@ -98,6 +98,15 @@ bot.on('message', async function(msg) {
         }
       }
     }
+    if(arg == CONSTANTS.COMMANDS.HISTORYIMAGE){
+      var userId = userIdFromAlias(args[1].toLowerCase())
+      if(userId != null){
+        var userData = MATCH_COMPUTATION.getStatsData()[userId]
+        if(userData != null){
+          DISCORD_HANDLER.sendImageForLatestCompetitiveMatch(msg, userId, msg.member.id)
+        }
+      }
+    }
     if(arg == CONSTANTS.COMMANDS.PARTY){
       var userAliases = args[1].toLowerCase().split(",")
       var members = []
@@ -147,7 +156,7 @@ bot.on('message', async function(msg) {
   }
 })
 
-cron.schedule('22 * * * *', async () => {
+cron.schedule('24 * * * *', async () => {
   LOG.log(2, '[AUTO] Getting Elo History for all users');
   for (var alias in subjectIdAliases) {
     // check if the property/key is defined in the object itself, not in parent

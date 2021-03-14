@@ -117,7 +117,8 @@ module.exports = {
     SETCOLOR:"setcolor",
     HISTORY:"history",
     AGENTWINLOSS:"agentwinloss",
-    AWL:"awl"
+    AWL:"awl",
+    HISTORYIMAGE:"lm" // latestmatch
   },
   DISCORD_ADMIN_USERS:["295701594715062272"],
   CONTENT:{

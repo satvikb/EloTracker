@@ -60,8 +60,10 @@ function matchHistory(userId, completion, computationCompletion){
       "Subject":userId,
       "Matches":totalMatchesWithExisting
     }
-    LOG.log(2, "Got match history. Entire history count: "+totalMatchesWithExisting.length)
-    completion(finalJson)
+    LOG.log(2, "Got match history for "+userId+". Entire history count: "+totalMatchesWithExisting.length)
+    if(completion != null){
+      completion(finalJson)
+    }
     saveMatchHistory(userId, totalMatchesWithExisting)
     downloadMatchIDs(userId, newMatchIDs, function(){
       if(computationCompletion != null){

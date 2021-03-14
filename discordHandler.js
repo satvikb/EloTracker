@@ -2,6 +2,8 @@ var CHART_HANDLER = require('./chartHandler');
 var TABLE_HANDLER = require('./tableHandler');
 var MATCH_HANDLER = require('./matchHandler');
 var MATCH_COMPUTATION = require('./matchComputation');
+var IMAGE_HANDLER = require('./imageHandler');
+
 var LOG = require('./logging');
 
 var CONSTANTS = require('./constants');
@@ -518,6 +520,37 @@ function sendMessageForAgentWinLoss(msg, userId, statsByAgent, discordId){
     msg.channel.send("No data.")
   }
 }
+function sendImageForLatestCompetitiveMatch(msg, userId, discordId){
+
+  MATCH_HANDLER.matchHistory(userId, null, function(history){
+    if(history != null){
+      let matches = history["Matches"]
+      for(var i = matches.length-1; i >= 0 ; i--){
+        if(matches[i]["TierAfterUpdate"] != 0){
+          var matchId = matches[i]["MatchID"]
+          console.log("LATEST MATCH "+matches[i]["MatchStartTime"]+"_"+matchId)
+          // ranked
+          var processedPath = CONSTANTS.PATHS.PROCESSED_MATCHES;
+          try{
+            let matchOverviewData = CONSTANTS.readJSONFile(processedPath + matchId + "/overview.json")
+            let matchRoundData = CONSTANTS.readJSONFile(processedPath + matchId + "/roundStats.json")
+            let matchPartyData = CONSTANTS.readJSONFile(processedPath + matchId + "/party.json")
+            let matchHitsData = CONSTANTS.readJSONFile(processedPath + matchId + "/hits.json")
+
+            IMAGE_HANDLER.getLatestMatchImage(userId, matchOverviewData, matchRoundData, matchPartyData, matchHitsData, function(imageBuffer){
+              const attachment = new discord.MessageAttachment(imageBuffer, 'image.png');
+              msg.channel.send("",attachment)
+            })
+          }catch(err){
+            LOG.log(0, "ERROR SENDING IMAGE "+err)
+          }
+          break; // only first match
+        }
+      }
+    }
+  })
+
+}
 function setUserColor(discordUserId, color){
   userColors[discordUserId] = color
   CONSTANTS.writeJSONFile('private/userColors.json', userColors)
@@ -527,5 +560,6 @@ module.exports = {
   sendEmbedForPlayerStats:sendEmbedForPlayerStats,
   sendEmbedForPartyStats:sendEmbedForPartyStats,
   sendMessageForMatchHistory:sendMessageForMatchHistory,
-  sendMessageForAgentWinLoss:sendMessageForAgentWinLoss
+  sendMessageForAgentWinLoss:sendMessageForAgentWinLoss,
+  sendImageForLatestCompetitiveMatch: sendImageForLatestCompetitiveMatch
 }
