@@ -15,14 +15,55 @@ let LEADERBOARD_MATCHES_RAW_PATH = "leaderboard/matches/raw/"
 let LEADERBOARD_MATCHES_PROCESSED_PATH = "leaderboard/matches/processed/"
 
 var AGENT_NAMES = {}
+var AGENT_PORTRAITS = {}
 for (var i = 0; i < contentData["Characters"].length; i++) {
-  AGENT_NAMES[contentData["Characters"][i]["ID"].toLowerCase()] = contentData["Characters"][i]["Name"]
+  var id = contentData["Characters"][i]["ID"].toLowerCase()
+  AGENT_NAMES[id] = contentData["Characters"][i]["Name"]
+
+  var portraitPath = "images/agents/"+id+".png"
+  if(fs.existsSync(portraitPath)){
+    // console.log("LOADING "+id+"__"+contentData["Characters"][i]["Name"])
+    AGENT_PORTRAITS[id] = fs.readFileSync(portraitPath)
+  }
+}
+
+var RANK_IMAGES = {}
+for(var i = 0; i < 25; i++){
+  var tierPath = "images/TX_CompetitiveTier_Large_"+i+".png"
+  if(fs.existsSync(tierPath)){
+    RANK_IMAGES[i+""] = fs.readFileSync(tierPath)
+    // console.log("load rank "+i)
+  }
 }
 
 var MAP_NAMES = {}
+var MAP_SPLASHES = {}
 for (var i = 0; i < contentData["Maps"].length; i++) {
-  MAP_NAMES[contentData["Maps"][i]["AssetName"].toLowerCase()] = contentData["Maps"][i]["Name"]
+  var asset = contentData["Maps"][i]["AssetName"].toLowerCase()
+  var name = contentData["Maps"][i]["Name"]
+  MAP_NAMES[asset] = name
+
+  var splashPath = "images/backgrounds/"+name.toLowerCase()+".png"
+  if(fs.existsSync(splashPath)){
+    MAP_SPLASHES[asset] = fs.readFileSync(splashPath)
+  }
 }
+
+const download = require('image-downloader')
+
+function loadImages(){
+  for (var i = 0; i < contentData["Characters"].length; i++) {
+    var id = contentData["Characters"][i]["ID"].toLowerCase()
+    var url = 'https://media.valorant-api.com/agents/'+id+'/displayicon.png'
+    const options = {
+      url: url,
+      dest: 'images/agents/'+id+".png"                // will be saved to /path/to/dest/image.jpg
+    }
+    // console.log("DL "+url)
+    download.image(options)
+  }
+}
+// loadImages()
 
 function readJSONFile(path){
   return JSON.parse(fs.readFileSync(path))
@@ -122,7 +163,10 @@ module.exports = {
   },
   DISCORD_ADMIN_USERS:["295701594715062272"],
   CONTENT:{
-    AGENT_NAMES:AGENT_NAMES,
-    MAP_NAMES:MAP_NAMES
+    AGENT_NAMES: AGENT_NAMES,
+    AGENT_PORTRAITS: AGENT_PORTRAITS,
+    MAP_NAMES: MAP_NAMES,
+    MAP_SPLASHES: MAP_SPLASHES,
+    RANK_IMAGES: RANK_IMAGES
   }
 }

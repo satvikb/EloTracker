@@ -105,6 +105,7 @@ function processMatchOverviewAnalysis(path, matchData){
   var matchID = matchData["matchInfo"]["matchId"]
   var mapId = matchData["matchInfo"]["mapId"]
   var matchStartTime = matchData["matchInfo"]["gameStartMillis"]
+  var gameLengthMillis = matchData["matchInfo"]["gameLengthMillis"]
 
   let players = matchData["players"]
   var playerData = {}
@@ -130,7 +131,8 @@ function processMatchOverviewAnalysis(path, matchData){
       "partyId":playerInfo["partyId"],
       "characterId":playerInfo["characterId"],
       "stats":playerInfo["stats"],
-      "teamId":playerInfo["teamId"]
+      "teamId":playerInfo["teamId"],
+      "competitiveTier":playerInfo["competitiveTier"]
     }
     scores.push(playerInfo["stats"]["score"])
 
@@ -258,7 +260,8 @@ function processMatchOverviewAnalysis(path, matchData){
     "matchID":matchID,
     "mapId":mapId,
     // "scores":scores,
-    "gameStartMillis":matchStartTime
+    "gameStartMillis":matchStartTime,
+    "gameLengthMillis":gameLengthMillis
   }
 
   var playerValues = Object.values(playerData);

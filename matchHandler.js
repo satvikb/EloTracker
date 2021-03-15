@@ -196,9 +196,12 @@ function getMatchDataFromMatchId(matchId){
 function rawMatchPath(matchId){
   return CONSTANTS.PATHS.RAW_MATCHES+matchId+'.json'
 }
-
+function getMatchHistoryData(){
+  return matchHistoryData
+}
 module.exports = {
   matchHistory: matchHistory,
   scoreboardForMatch:scoreboardForMatch,
-  getMatchDataFromMatchId:getMatchDataFromMatchId
+  getMatchDataFromMatchId:getMatchDataFromMatchId,
+  getMatchHistoryData:getMatchHistoryData
 }

@@ -1,5 +1,6 @@
-const { createCanvas, loadImage } = require('canvas')
+const { createCanvas, loadImage, Image } = require('canvas')
 var CONSTANTS = require('./constants');
+var dateFormat = require('dateformat');
 
 // Draw line under text
 // var text = ctx.measureText('Awesome!')
@@ -16,7 +17,7 @@ var CONSTANTS = require('./constants');
 //   console.log('<img src="' + canvas.toDataURL() + '" />')
 // })
 
-async function getLatestMatchImage(userId, overviewData, roundData, partyData, hitsData, completion){
+function getLatestMatchImage(userId, overviewData, roundData, partyData, statsData, completion){
   let iw = 1920
   let ih = 1080
   const canvas = createCanvas(iw, ih)
@@ -25,12 +26,17 @@ async function getLatestMatchImage(userId, overviewData, roundData, partyData, h
   function rect(color, x,y,w,h){
     ctx.fillStyle = color
     ctx.fillRect(x,y,w,h)
+    ctx.fillStyle = "rgb(0,0,0,0)"
   }
-  function text(text,x,y,color,font){
+  function text(text,x,y,color,font,align,vAlign){
     color = color == null ? "white" : color
     font = font == null ? "50px Impact" : font
+    align = align || "start"
+    vAlign = vAlign || "alphabetic"
     ctx.fillStyle = color
+    ctx.textAlign = align
     ctx.font = font
+    ctx.textBaseline = vAlign
     ctx.fillText(text, x, y)
   }
 
@@ -52,6 +58,8 @@ async function getLatestMatchImage(userId, overviewData, roundData, partyData, h
   let sHeight = ih - ((headerY+headerHeight) + (ih-tY)) - (sVerticalPadding*2)
 
   var allyTeamColor = roundData["teamInfo"][userId]
+  var teamKey = allyTeamColor.toLowerCase()
+  var otherTeamKey = allyTeamColor == "Blue" ? "red" : "blue"
 
   function makeTimelime(){
     var roundCount = Object.keys(roundData["winResults"]).length
@@ -61,9 +69,10 @@ async function getLatestMatchImage(userId, overviewData, roundData, partyData, h
 
     rect("rgb(25,25,25,1)", tX, tY, tW, tH)
 
-    function drawRoundResult(x, team, resultCode){
+    function drawRoundResult(roundNum, x, team, resultCode){
       rect("rgb(50,50,50,1)", x, tY, resultWidth, tH)
 
+      text(roundNum+"",x+(resultWidth/2),tY+(tH*0.15),"white","15px Impact", "center", "middle")
     }
 
     var roundResults = roundData["roundResults"]
@@ -71,58 +80,71 @@ async function getLatestMatchImage(userId, overviewData, roundData, partyData, h
     for(var roundNum in roundResults){
       if(roundResults.hasOwnProperty(roundNum)){
 
-        drawRoundResult(tX+(count*resultWidth)+(resultPadding*count), roundData["winResults"][roundNum], roundResults[roundNum])
+        drawRoundResult(count+1, tX+(count*resultWidth)+(resultPadding*count), roundData["winResults"][roundNum], roundResults[roundNum])
         count += 1
       }
     }
   }
-  async function makeScoreboard(){
-    rect("rgb(25,25,25,1)", sX, sY, sWidth, sHeight)
+  function makeScoreboard(){
+    rect("rgba(25,25,25,0.5)", sX, sY, sWidth, sHeight)
     let headerHeight = sHeight*0.05
     let rowHeight = (sHeight-headerHeight) / 10 // always 10 players?
 
     let agentX = 0
+    let rankX = 0.05
     let nameX = 0.1
     let acsX = 0.3
     let kdaX = 0.4
-    let econX = 0.5
+    let hsX = 0.5
     let fbX = 0.6 // first blood
     let pX = 0.7 // plants
     let dX = 0.8 // defuses
 
     function headerText(txt,x,w){
       // TODO textbox and center
-      text(txt, sX + (sWidth*x), sY+headerHeight, "white", "20pt Impact")//, sWidth*w,h)
+      text(txt, sX + (sWidth*x)+((w*sWidth)/2), sY+(headerHeight/2), "white", "20pt Impact", "center", "middle")//, sWidth*w,h)
     }
     function tableHeader(){
       rect("rgb(50,50,50,1)", sX, sY, sWidth, headerHeight)
-      headerText("Agent", agentX, nameX-agentX)
+      // headerText("Agent", agentX, nameX-agentX)
       headerText("Name", nameX, acsX-nameX)
       headerText("ACS", acsX, kdaX-acsX)
-      headerText("KDA", kdaX, econX-kdaX)
-      headerText("HS", econX, fbX-econX)
-      headerText("fb", fbX, pX-fbX)
+      headerText("KDA", kdaX, hsX-kdaX)
+      headerText("HS %", hsX, fbX-hsX)
+      headerText("FB", fbX, pX-fbX)
       headerText("Plants", pX, dX-pX)
       headerText("Defuses", dX, 1-dX)
     }
 
-    async function tableRow(i, bgColor, agentId, name, acs, kda, hs, fb, plants, defuses){
+    function tableRow(i, bgColor, agentId, rankTier, name, acs, kda, hs, fb, plants, defuses){
       let rowY = sY+headerHeight+((i+1)*rowHeight)
       rect(bgColor, sX, rowY-rowHeight, sWidth, rowHeight)
 
-      function rowLabel(txt, x){ // TODO add w and textbox
-        text(txt, sX+(sWidth*x), rowY, "white", "15pt Impact")
+      function rowLabel(txt, x, w){ // TODO add w and textbox
+        text(txt, sX+(sWidth*x)+((w*sWidth)/2), rowY-(rowHeight*0.25), "white", "15pt Impact", "center")
       }
 
-      var agentImage = await loadImage('https://media.valorant-api.com/agents/'+agentId+'/displayicon.png')
-      let imgS = 50;//Math.min((nameX-agentX)*sWidth, rowHeight)
-      ctx.drawImage(agentImage, sX, rowY, imgS, imgS)
-      console.log("Draw")
+      var agentImageData = CONSTANTS.CONTENT.AGENT_PORTRAITS[agentId]//await loadImage('https://media.valorant-api.com/agents/'+agentId+'/displayicon.png')
+      var img = new Image
+      img.src = agentImageData
+
+      var imgS = Math.min((rankX-agentX)*sWidth, rowHeight)
+      ctx.drawImage(img, sX, rowY-imgS, imgS, imgS)
+
+console.log("RR "+rankTier)
+      var rankImageData = CONSTANTS.CONTENT.RANK_IMAGES[rankTier+""]//await loadImage('https://media.valorant-api.com/agents/'+agentId+'/displayicon.png')
+      var rankImg = new Image
+      rankImg.src = rankImageData
+
+      imgS = Math.min((nameX-rankX)*sWidth, rowHeight)
+      ctx.drawImage(rankImg, sX+(rankX*sWidth), rowY-imgS, imgS, imgS)
+
+      // console.log("Draw "+agentId+"_"+rowY)
       // rowLabel(agent, agentX, nameX-agentX)
       rowLabel(name, nameX, acsX-nameX)
       rowLabel(acs, acsX, kdaX-acsX)
-      rowLabel(kda, kdaX, econX-kdaX)
-      rowLabel(hs, econX, fbX-econX)
+      rowLabel(kda, kdaX, hsX-kdaX)
+      rowLabel(hs, hsX, fbX-hsX)
       rowLabel(fb, fbX, pX-fbX)
       rowLabel(plants, pX, dX-pX)
       rowLabel(defuses, dX, 1-dX)
@@ -133,25 +155,73 @@ async function getLatestMatchImage(userId, overviewData, roundData, partyData, h
     var scoreboardData = overviewData["scoreboard"].reverse()
     for(var i = 0; i < scoreboardData.length; i++){
       var playerData = scoreboardData[i]
+      var curPlayerId = playerData["subject"]
       var playerTeam = playerData["teamId"]
       var agentId = playerData["characterId"].toLowerCase()
+      var tier = playerData["competitiveTier"]
       var agentName = CONSTANTS.CONTENT.AGENT_NAMES[agentId]
       var s = playerData["stats"]
       var gameName = playerData["gameName"]+"#"+playerData["tagLine"]
       var kda = s["kills"]+" / "+s["deaths"]+" / "+s["assists"]
 
-      var totalHits = hitsData[userId]["headshots"] + hitsData[userId]["bodyshots"] + hitsData[userId]["legshots"]
-      var hsPercent = ((hitsData[userId]["headshots"] / totalHits)*100).toFixed(2)+"%"
-
-      tableRow(i, allyTeamColor == playerTeam ? "gray" : "rgb("+(30*i)+", 0, 0, 1)", agentId, gameName, s["score"], kda, hsPercent, s["firstBloods"] || 0, s["plants"] || 0, s["defuses"] || 0)
+      var totalHits = statsData["hits"][curPlayerId]["headshots"] + statsData["hits"][curPlayerId]["bodyshots"] + statsData["hits"][curPlayerId]["legshots"]
+      var hsPercent = ((statsData["hits"][curPlayerId]["headshots"] / totalHits)*100).toFixed(2)+"%"
+      tableRow(i, allyTeamColor == playerTeam ? "rgba(20,226,134,0.5)" : "rgba(226, 86, 20, 0.5)", agentId, tier, gameName, s["score"], kda, hsPercent, s["firstBloods"] || 0, s["plants"] || 0, s["defuses"] || 0)
     }
   }
+  function makeHeader(){
+    rect("rgba(25,25,25,0.5)", headerX, headerY, headerWidth, headerHeight)
+    var wonGame = allyTeamColor == overviewData["gameInfo"]["winningTeam"]
+    var resultText = wonGame ? "VICTORY" : "DEFEAT"
+    var resultColor = wonGame ? "blue" : "red"
+    var oppositeColor = wonGame ? "red" : "blue"
 
-  rect("black", 0, 0, canvas.width, canvas.height) // bg
+    var allyScore = overviewData["gameInfo"][teamKey+"Score"]
+    var enemyScore = overviewData["gameInfo"][otherTeamKey+"Score"]
 
-  rect("rgb(25,25,25,1)", headerX, headerY, headerWidth, headerHeight)
-  text("Score", 50, 130)
+    var oldHeaderWidth = headerWidth
+    headerWidth = headerWidth*0.8
 
+    text(resultText, headerX+(headerWidth/2), headerY+(headerHeight/2), resultColor, "70px Impact", "center", "middle")
+    text(allyScore+"", headerX+(headerWidth*0.25),  headerY+(headerHeight/2), resultColor, "70px Impact", "center", "middle")
+    text(enemyScore+"", headerX+(headerWidth*0.75),  headerY+(headerHeight/2), oppositeColor, "70px Impact", "center", "middle")
+
+    var rightSideHeaderWidth = oldHeaderWidth-headerWidth
+    var rightSideHeaderX = headerX+headerWidth
+
+    function msToTime(s) {
+      var ms = s % 1000;
+      s = (s - ms) / 1000;
+      var secs = s % 60;
+      s = (s - secs) / 60;
+      var mins = s % 60;
+      var hrs = (s - mins) / 60;
+
+      return (hrs == 0 ? "" : ":") + mins + ':' + secs
+    }
+    console.log("T"+overviewData["gameInfo"]["gameLengthMillis"])
+    var gameLength = msToTime(overviewData["gameInfo"]["gameLengthMillis"])
+    var d = new Date(overviewData["gameInfo"]["gameStartMillis"])
+    var fieldDay = dateFormat(d, "m/d h:MMtt");
+
+    text(gameLength, rightSideHeaderX+(rightSideHeaderWidth/2), headerY+(headerHeight*0.1), "white", "30px Impact", "center", "middle")
+    text(fieldDay, rightSideHeaderX+(rightSideHeaderWidth/2), headerY+(headerHeight*0.3), "white", "30px Impact", "center", "middle")
+
+    headerWidth = oldHeaderWidth
+  }
+  function makeBackground(){
+    rect("black", 0, 0, iw,ih) // bg
+    var mapAssetPath = overviewData["gameInfo"]["mapId"].split("/")
+    var mapKey = mapAssetPath[mapAssetPath.length-1].toLowerCase()
+
+    var mapSplash = CONSTANTS.CONTENT.MAP_SPLASHES[mapKey]//await loadImage('https://media.valorant-api.com/agents/'+agentId+'/displayicon.png')
+    var img = new Image
+    img.src = mapSplash
+    ctx.drawImage(img, 0,0,iw,ih)
+  }
+
+  makeBackground()
+  makeHeader()
   makeTimelime()
   makeScoreboard()
 

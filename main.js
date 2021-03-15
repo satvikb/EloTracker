@@ -99,24 +99,26 @@ bot.on('message', async function(msg) {
       }
     }
     if(arg == CONSTANTS.COMMANDS.HISTORYIMAGE){
-      var userId = userIdFromAlias(args[1].toLowerCase())
-      if(userId != null){
-        var userData = MATCH_COMPUTATION.getStatsData()[userId]
-        if(userData != null){
-          DISCORD_HANDLER.sendImageForLatestCompetitiveMatch(msg, userId, msg.member.id)
+      if(CONSTANTS.DISCORD_ADMIN_USERS.includes(msg.member.id)){
+        var userId = userIdFromAlias(args[1].toLowerCase())
+        if(userId != null){
+          var userData = MATCH_COMPUTATION.getStatsData()[userId]
+          if(userData != null){
+            DISCORD_HANDLER.sendImageForLatestCompetitiveMatch(msg, userId, msg.member.id)
+          }
         }
       }
     }
     if(arg == CONSTANTS.COMMANDS.PARTY){
       var userAliases = args[1].toLowerCase().split(",")
+      var isStar = (args[2] || "") == "*"
       var members = []
       for(var i = 0; i < userAliases.length; i++){
         var userId = userIdFromAlias(userAliases[i])
         members.push(userId)
       }
-      var key = members.sort().toString()
-      var allParty = MATCH_COMPUTATION.getPartyData()
-      var partyData = allParty[key]
+      var partyData = MATCH_COMPUTATION.getPartyDataForParty(members, isStar)
+      // console.log("DDD "+JSON.stringify(partyData)+"__"+JSON.stringify(members)+"_"+args[1]+"_"+args[2]+"_")
       if(partyData != undefined){
         DISCORD_HANDLER.sendEmbedForPartyStats(msg, partyData)
       }else{

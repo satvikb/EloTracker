@@ -18,6 +18,81 @@ function getStatsData(){
 function getPartyData(){
   return totalPartyData
 }
+function getPartyDataForParty(members, wildcard){
+  if(wildcard == false){
+    let key = members.sort().toString()
+    return totalPartyData[key]
+  }else{
+
+    var totalData = {
+      "playtimeMillis": 0,
+      "totalKills": 0,
+      "totalDeaths": 0,
+      "totalAssists": 0,
+      "members": members,
+      "roundsPlayed": 0,
+      "roundsWon": 0,
+      "gamesPlayed":0,
+      "gamesWon":0,
+      "gamesByMap":{},
+      "numberParties":0
+    }
+
+    for(var partyKey in totalPartyData){
+      if(totalPartyData.hasOwnProperty(partyKey)){
+        var curPartyData = totalPartyData[partyKey]
+        var curMembers = curPartyData["members"]
+
+        var validParty = members.every(val => curMembers.includes(val));
+
+        if(validParty){
+          totalData["numberParties"] += 1
+          
+          var playtime = curPartyData["playtimeMillis"]
+          var kills = curPartyData["totalKills"]
+          var deaths = curPartyData["totalDeaths"]
+          var assists = curPartyData["totalAssists"]
+          var roundsPlayed = curPartyData["roundsPlayed"]
+          var roundsWon = curPartyData["roundsWon"]
+          var gamesWon = curPartyData["gamesWon"]
+          var gamesPlayed = curPartyData["gamesPlayed"]
+
+          totalData["playtimeMillis"] += playtime
+          totalData["totalKills"] += kills
+          totalData["totalDeaths"] += deaths
+          totalData["totalAssists"] += assists
+          totalData["roundsPlayed"] += roundsPlayed
+          totalData["roundsWon"] += roundsWon
+          totalData["gamesWon"] += gamesWon
+          totalData["gamesPlayed"] += gamesPlayed
+
+          var mapData = curPartyData["gamesByMap"]
+          for(var mapKey in mapData){
+            if(mapData.hasOwnProperty(mapKey)){
+
+
+              if(totalData["gamesByMap"][mapKey] == undefined){
+                totalData["gamesByMap"][mapKey] = {
+                  "mapName":mapData[mapKey]["mapName"],
+                  "gamesWon":0,
+                  "gamesPlayed":0
+                }
+              }
+
+              totalData["gamesByMap"][mapKey]["gamesPlayed"] += mapData[mapKey]["gamesPlayed"]
+              totalData["gamesByMap"][mapKey]["gamesWon"] += mapData[mapKey]["gamesWon"]
+
+            }
+          }
+        }
+
+
+      }
+    }
+
+    return totalData
+  }
+}
 
 function computeAggregate(){
   computeTotalStats()
@@ -340,5 +415,6 @@ function includeMatchInComputation(matchOverviewData){
 module.exports = {
   computeAggregate: computeAggregate,
   getStatsData: getStatsData,
-  getPartyData: getPartyData
+  getPartyData: getPartyData,
+  getPartyDataForParty:getPartyDataForParty
 }

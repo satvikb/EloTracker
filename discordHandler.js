@@ -284,9 +284,12 @@ async function sendEmbedForPartyStats(msg, partyStats){
   for(var i = 0; i < mems.length; i++){
     var mem = mems[i]
     var userStats = statsObject[mem]
-      if(userStats != undefined){
+    if(userStats != undefined){
       partyNameText += userStats["gameName"]+"#"+userStats["tagLine"]+(i < mems.length - 1 ? " / " : "")
     }
+  }
+  if(partyStats["numberParties"] != undefined){
+    partyNameText += " (w/ "+partyStats["numberParties"]+" parties)"
   }
   const embed = new discord.MessageEmbed()
         .setColor(userColor)
@@ -524,10 +527,12 @@ function sendImageForLatestCompetitiveMatch(msg, userId, discordId){
 
   MATCH_HANDLER.matchHistory(userId, null, function(history){
     if(history != null){
-      let matches = history["Matches"]
-      for(var i = matches.length-1; i >= 0 ; i--){
-        if(matches[i]["TierAfterUpdate"] != 0){
-          var matchId = matches[i]["MatchID"]
+      let historyData = MATCH_HANDLER.getMatchHistoryData()
+      let matches = historyData[userId]["MatchSort"]
+      for(var i = 0; i < matches.length; i++){
+        var id = matches[i]
+        if(historyData[userId]["Matches"][id]["TierAfterUpdate"] != 0){
+          var matchId = id//matches[i]["MatchID"]
           console.log("LATEST MATCH "+matches[i]["MatchStartTime"]+"_"+matchId)
           // ranked
           var processedPath = CONSTANTS.PATHS.PROCESSED_MATCHES;
@@ -535,9 +540,9 @@ function sendImageForLatestCompetitiveMatch(msg, userId, discordId){
             let matchOverviewData = CONSTANTS.readJSONFile(processedPath + matchId + "/overview.json")
             let matchRoundData = CONSTANTS.readJSONFile(processedPath + matchId + "/roundStats.json")
             let matchPartyData = CONSTANTS.readJSONFile(processedPath + matchId + "/party.json")
-            let matchHitsData = CONSTANTS.readJSONFile(processedPath + matchId + "/hits.json")
+            let matchStatsData = CONSTANTS.readJSONFile(processedPath + matchId + "/stats.json")
 
-            IMAGE_HANDLER.getLatestMatchImage(userId, matchOverviewData, matchRoundData, matchPartyData, matchHitsData, function(imageBuffer){
+            IMAGE_HANDLER.getLatestMatchImage(userId, matchOverviewData, matchRoundData, matchPartyData, matchStatsData, function(imageBuffer){
               const attachment = new discord.MessageAttachment(imageBuffer, 'image.png');
               msg.channel.send("",attachment)
             })
