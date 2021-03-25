@@ -110,13 +110,16 @@ function getLatestMatchImage(userId, overviewData, roundData, partyData, statsDa
         rect(color,x+(resultWidth*x2),tY+(tH*y2),w*resultWidth,h*tH)
       }
 
+      var timelineTitleFontSize = 13 + ((26 - roundCount)*0.2)
+      var timelineTextFontSize = 15 + ((26 - roundCount)*0.2)
+
       rText(roundNum+"", 0.5, 0.1, team == teamKey ? ALLY_COLOR : ENEMY_COLOR, "15px impact", "center", "middle")
-      rText("Avg. Loadout", 0, 0.25, "white", "17px impact", null, "middle")
-      rText(allyLoadout, 0.05, 0.4, ALLY_COLOR, "15px impact", null, "middle")
-      rText(enemyLoadout, 0.55, 0.4, ENEMY_COLOR, "15px impact", null, "middle")
-      rText("Avg. Bank", 0, 0.6, "white", "17px impact", null, "middle")
-      rText(allyBank, 0.05, 0.75, ALLY_COLOR, "15px impact", null, "middle")
-      rText(enemyBank, 0.55, 0.75, ENEMY_COLOR, "15px impact", null, "middle")
+      rText("Avg. Loadout", 0, 0.25, "white", timelineTitleFontSize+"px impact", null, "middle")
+      rText(allyLoadout, 0.05, 0.4, ALLY_COLOR, timelineTextFontSize+"px impact", null, "middle")
+      rText(enemyLoadout, 0.55, 0.4, ENEMY_COLOR, timelineTextFontSize+"px impact", null, "middle")
+      rText("Avg. Bank", 0, 0.6, "white", timelineTitleFontSize+"px impact", null, "middle")
+      rText(allyBank, 0.05, 0.75, ALLY_COLOR, timelineTextFontSize+"px impact", null, "middle")
+      rText(enemyBank, 0.55, 0.75, ENEMY_COLOR, timelineTextFontSize+"px impact", null, "middle")
 
       var damageTotal = allyDamage + enemyDamage
       var allyDamagePercent = allyDamage / damageTotal;
@@ -189,12 +192,14 @@ function getLatestMatchImage(userId, overviewData, roundData, partyData, statsDa
         text(txt, sX+(sWidth*x)+((w*sWidth)/2), rowY-(rowHeight*0.25), "white", "15pt Impact", "center")
       }
 
+
       var agentImageData = CONSTANTS.CONTENT.AGENT_PORTRAITS[agentId]//await loadImage('https://media.valorant-api.com/agents/'+agentId+'/displayicon.png')
       var img = new Image
       img.src = agentImageData
 
       var imgS = Math.min((rankX-agentX)*sWidth, rowHeight)
-      ctx.drawImage(img, sX, rowY-imgS, imgS, imgS)
+      var imgY = (rowY-imgS) - (rowHeight-imgS)/2
+      ctx.drawImage(img, sX, imgY, imgS, imgS)
 
       // console.log("RR "+rankTier)
       var rankImageData = CONSTANTS.CONTENT.RANK_IMAGES[rankTier+""]//await loadImage('https://media.valorant-api.com/agents/'+agentId+'/displayicon.png')
@@ -202,7 +207,7 @@ function getLatestMatchImage(userId, overviewData, roundData, partyData, statsDa
       rankImg.src = rankImageData
 
       imgS = Math.min((nameX-rankX)*sWidth, rowHeight)
-      ctx.drawImage(rankImg, sX+(rankX*sWidth), rowY-imgS, imgS, imgS)
+      ctx.drawImage(rankImg, sX+(rankX*sWidth), imgY, imgS, imgS)
 
       // console.log("Draw "+agentId+"_"+rowY)
       // rowLabel(agent, agentX, nameX-agentX)
