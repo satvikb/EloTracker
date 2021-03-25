@@ -104,7 +104,8 @@ bot.on('message', async function(msg) {
         if(userId != null){
           var userData = MATCH_COMPUTATION.getStatsData()[userId]
           if(userData != null){
-            DISCORD_HANDLER.sendImageForLatestCompetitiveMatch(msg, userId, msg.member.id)
+            var matchOffset = parseInt(args[2]) || 0
+            DISCORD_HANDLER.sendImageForLatestCompetitiveMatch(msg, userId, msg.member.id, matchOffset)
           }
         }
       }

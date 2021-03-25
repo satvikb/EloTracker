@@ -19,7 +19,7 @@ var dateFormat = require('dateformat');
 //   console.log('<img src="' + canvas.toDataURL() + '" />')
 // })
 
-function getLatestMatchImage(userId, overviewData, roundData, partyData, statsData, completion){
+function getLatestMatchImage(userId, overviewData, roundData, partyData, statsData, eloData, completion){
   let iw = 1920
   let ih = 1080
 
@@ -114,10 +114,12 @@ function getLatestMatchImage(userId, overviewData, roundData, partyData, statsDa
       var timelineTextFontSize = 15 + ((26 - roundCount)*0.2)
 
       rText(roundNum+"", 0.5, 0.1, team == teamKey ? ALLY_COLOR : ENEMY_COLOR, "15px impact", "center", "middle")
-      rText("Avg. Loadout", 0, 0.25, "white", timelineTitleFontSize+"px impact", null, "middle")
+      if(roundNum <= 1){
+        rText("Avg. Loadout", 0, 0.25, "white", timelineTitleFontSize+"px impact", null, "middle")
+        rText("Avg. Bank", 0, 0.6, "white", timelineTitleFontSize+"px impact", null, "middle")
+      }
       rText(allyLoadout, 0.05, 0.4, ALLY_COLOR, timelineTextFontSize+"px impact", null, "middle")
       rText(enemyLoadout, 0.55, 0.4, ENEMY_COLOR, timelineTextFontSize+"px impact", null, "middle")
-      rText("Avg. Bank", 0, 0.6, "white", timelineTitleFontSize+"px impact", null, "middle")
       rText(allyBank, 0.05, 0.75, ALLY_COLOR, timelineTextFontSize+"px impact", null, "middle")
       rText(enemyBank, 0.55, 0.75, ENEMY_COLOR, timelineTextFontSize+"px impact", null, "middle")
 
@@ -159,8 +161,8 @@ function getLatestMatchImage(userId, overviewData, roundData, partyData, statsDa
     let rowHeight = (sHeight-headerHeight) / 10 // always 10 players?
 
     let agentX = 0
-    let rankX = 0.05
-    let nameX = 0.1
+    let rankX = 0.075
+    let nameX = 0.15
     let acsX = 0.4
     let kdaX = 0.6
     let hsX = 0.75
@@ -189,7 +191,7 @@ function getLatestMatchImage(userId, overviewData, roundData, partyData, statsDa
       rect(bgColor, sX, rowY-rowHeight, sWidth, rowHeight)
 
       function rowLabel(txt, x, w){ // TODO add w and textbox
-        text(txt, sX+(sWidth*x)+((w*sWidth)/2), rowY-(rowHeight*0.25), "white", "15pt Impact", "center")
+        text(txt, sX+(sWidth*x)+((w*sWidth)/2), rowY-(rowHeight*0.5), "white", "15pt Impact", "center", "middle")
       }
 
 
@@ -250,17 +252,25 @@ function getLatestMatchImage(userId, overviewData, roundData, partyData, statsDa
     var allyScore = overviewData["gameInfo"][teamKey.toLowerCase()+"Score"]
     var enemyScore = overviewData["gameInfo"][otherTeamKey.toLowerCase()+"Score"]
 
-    // var oldHeaderWidth = headerWidth
-    // headerWidth = headerWidth*0.8
+    var eloGained = eloData["RankedRatingEarned"]
+    eloGained = eloGained > 0 ? "+"+eloGained : eloGained
 
-    text(resultText, headerX+(headerWidth/2), headerY+(headerHeight/2), resultColor, "70px Impact", "center", "middle")
-    text(allyScore+"", headerX+(headerWidth*0.25),  headerY+(headerHeight/2), resultColor, "70px Impact", "center", "middle")
-    text(enemyScore+"", headerX+(headerWidth*0.75),  headerY+(headerHeight/2), oppositeColor, "70px Impact", "center", "middle")
+    var rankTier = eloData["TierAfterUpdate"]
 
-    // var rightSideHeaderWidth = oldHeaderWidth-headerWidth
-    // var rightSideHeaderX = headerX+headerWidth
 
-    // rect("black", rightSideHeaderX, headerY, rightSideHeaderWidth, headerHeight)
+    text(resultText, headerX+(headerWidth*0.5), headerY+(headerHeight/2), resultColor, "100px Impact", "center", "middle")
+    text(allyScore+"", headerX+(headerWidth*0.25),  headerY+(headerHeight/2), resultColor, "120px Impact", "center", "middle")
+    text(enemyScore+"", headerX+(headerWidth*0.75),  headerY+(headerHeight/2), oppositeColor, "120px Impact", "center", "middle")
+
+
+    text(eloGained+" RP", headerX+(headerWidth*0.125), headerY+(headerHeight/2), resultColor, "50px Impact", "center", "middle")
+
+    var rankImageData = CONSTANTS.CONTENT.RANK_IMAGES[rankTier+""]//await loadImage('https://media.valorant-api.com/agents/'+agentId+'/displayicon.png')
+    var rankImg = new Image
+    rankImg.src = rankImageData
+
+    imgS = headerHeight*0.75
+    ctx.drawImage(rankImg, headerX+(headerWidth*0.875)-(imgS/2), headerY+(headerHeight/2)-(imgS/2), imgS, imgS)
 
     function msToTime(s) {
       var ms = s % 1000;
@@ -270,7 +280,7 @@ function getLatestMatchImage(userId, overviewData, roundData, partyData, statsDa
       var mins = s % 60;
       var hrs = (s - mins) / 60;
 
-      return (hrs == 0 ? "" : ":") + mins + 'm:' + secs+"s"
+      return (hrs == 0 ? "" : ":") + mins + 'm:' + (secs+"").padStart(2,'0')+"s"
     }
     console.log("T"+overviewData["gameInfo"]["gameLengthMillis"])
     var gameLength = msToTime(overviewData["gameInfo"]["gameLengthMillis"])
@@ -279,7 +289,7 @@ function getLatestMatchImage(userId, overviewData, roundData, partyData, statsDa
 
     // text(gameLength, headerX+(headerWidth*0.4), headerY+(headerHeight*0.75), "white", "30px Impact", "center", "middle")
     // text(fieldDay, headerX+(headerWidth*0.6), headerY+(headerHeight*0.75), "white", "30px Impact", "center", "middle")
-    text(gameLength+" | "+fieldDay, headerX+(headerWidth*0.5), headerY+(headerHeight*0.75), "white", "30px Impact", "center", "middle")
+    text(gameLength+" | "+fieldDay, headerX+(headerWidth*0.5), headerY+(headerHeight*0.95), "white", "30px Impact", "center", "bottom")
 
     // headerWidth = oldHeaderWidth
   }

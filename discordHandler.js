@@ -3,6 +3,7 @@ var TABLE_HANDLER = require('./tableHandler');
 var MATCH_HANDLER = require('./matchHandler');
 var MATCH_COMPUTATION = require('./matchComputation');
 var IMAGE_HANDLER = require('./imageHandler');
+const fs = require('fs');
 
 var LOG = require('./logging');
 
@@ -95,19 +96,19 @@ async function sendEmbedForEloHistory(msg, eloHistory, args, userFullName){
         }else{
           // same
           eloChange = RPAfter - RPBefore;
-          if(eloChange >= 30){
+          if(eloChange >= 25){
             competitiveMovement = CONSTANTS.RANK_ARROWS.INC_MAJOR
-          }else if(eloChange >= 20 && eloChange < 30){
+          }else if(eloChange >= 16 && eloChange < 25){
             competitiveMovement = CONSTANTS.RANK_ARROWS.INCREASE
-          }else if(eloChange >= 10 && eloChange < 20){
+          }else if(eloChange >= 6 && eloChange < 16){
             competitiveMovement =  CONSTANTS.RANK_ARROWS.INC_MINOR
-          }else if(eloChange >= -10 && eloChange < 10){
+          }else if(eloChange >= -6 && eloChange < 6){
             competitiveMovement = CONSTANTS.RANK_ARROWS.DRAW
-          }else if(eloChange >= -20 && eloChange < -10){
+          }else if(eloChange >= -16 && eloChange < -6){
             competitiveMovement = CONSTANTS.RANK_ARROWS.DEC_MINOR
-          }else if(eloChange >= -30 && eloChange < -20){
+          }else if(eloChange >= -25 && eloChange < -16){
             competitiveMovement = CONSTANTS.RANK_ARROWS.DECREASE
-          }else if(eloChange < -30){
+          }else if(eloChange < -25){
             competitiveMovement = CONSTANTS.RANK_ARROWS.DEC_MAJOR
           }
           eloSign = eloChange < 0 ? "" : "+"
@@ -155,6 +156,9 @@ async function sendEmbedForEloHistory(msg, eloHistory, args, userFullName){
             break;
           case CONSTANTS.RANK_ARROWS.DEMOTED:
             compMovementEmoji = CONSTANTS.RANK_EMOJIS.DEMOTED
+            break;
+          case CONSTANTS.RANK_ARROWS.PROMOTED:
+            compMovementEmoji = CONSTANTS.RANK_EMOJIS.PROMOTED
             break;
           case CONSTANTS.RANK_ARROWS.DRAW:
             compMovementEmoji = CONSTANTS.RANK_EMOJIS.DRAW
@@ -607,7 +611,10 @@ function sendMessageForAllParties(msg, userId){
   msg.channel.send(table)
 
 }
-function sendImageForLatestCompetitiveMatch(msg, userId, discordId){
+function sendImageForLatestCompetitiveMatch(msg, userId, discordId, matchOffset){
+  matchOffset = matchOffset || 0
+
+  var processedPath = CONSTANTS.PATHS.PROCESSED_MATCHES;
 
   MATCH_HANDLER.matchHistory(userId, null, function(history){
     if(history != null){
@@ -615,18 +622,25 @@ function sendImageForLatestCompetitiveMatch(msg, userId, discordId){
       let matches = historyData[userId]["MatchSort"]
       for(var i = 0; i < matches.length; i++){
         var id = matches[i]
+        var matchId = id
+
         if(historyData[userId]["Matches"][id]["TierAfterUpdate"] != 0){
-          var matchId = id//matches[i]["MatchID"]
+          if(fs.existsSync(processedPath + matchId + "/overview.json") == false){
+            continue
+          }
+          if(matchOffset > 0){
+            matchOffset -= 1;
+            continue
+          }
           console.log("LATEST MATCH "+matches[i]["MatchStartTime"]+"_"+matchId)
           // ranked
-          var processedPath = CONSTANTS.PATHS.PROCESSED_MATCHES;
           try{
             let matchOverviewData = CONSTANTS.readJSONFile(processedPath + matchId + "/overview.json")
             let matchRoundData = CONSTANTS.readJSONFile(processedPath + matchId + "/roundStats.json")
             let matchPartyData = CONSTANTS.readJSONFile(processedPath + matchId + "/party.json")
             let matchStatsData = CONSTANTS.readJSONFile(processedPath + matchId + "/stats.json")
 
-            IMAGE_HANDLER.getLatestMatchImage(userId, matchOverviewData, matchRoundData, matchPartyData, matchStatsData, function(imageBuffer){
+            IMAGE_HANDLER.getLatestMatchImage(userId, matchOverviewData, matchRoundData, matchPartyData, matchStatsData, historyData[userId]["Matches"][id], function(imageBuffer){
               const attachment = new discord.MessageAttachment(imageBuffer, 'image.png');
               msg.channel.send("",attachment)
             })
@@ -636,6 +650,11 @@ function sendImageForLatestCompetitiveMatch(msg, userId, discordId){
           break; // only first match
         }
       }
+      if(matchOffset > 0){
+        msg.channel.send("Match not found (too far back)")
+      }
+    }else{
+      msg.channel.send("No match history")
     }
   })
 
