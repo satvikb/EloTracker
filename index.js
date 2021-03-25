@@ -1320,9 +1320,11 @@ bot.on('message', async function(msg) {
 
             if(arg == "elo"){
               displayUserElo(userId, accessToken, entitlementsToken)
-            }//else if(arg == "gam"){
+            }else if(arg == "gam"){
             //  downloadMatchHistory(accessToken, entitlementsToken, competitiveupdatesEndpointResult)
-            //}
+            // function updateUserElo(userId, accessToken, entitlementsToken, computeStats, dataCompletion, getEntireHistory, useLeaderboardStats){
+              updateUserElo(userId, accessToken, entitlementsToken, false, function(){}, true, false)
+            }
           });
         }else{
           msg.channel.send("Alias has not beed added yet. Use ?add")

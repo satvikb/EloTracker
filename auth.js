@@ -106,7 +106,7 @@ function getUserAuth(completion){
               }
               authCacheData[username] = creds;
               CONSTANTS.writeJSONFile('private/authCache.json', authCacheData)
-              
+
               latestEntitlements = entitlementsToken
               latestToken = latestToken
               expireTime = finalExpireTime
@@ -129,7 +129,7 @@ function requestOptions(url, ent, tok){
           'Authorization': 'Bearer '+tok,
           'X-Riot-Entitlements-JWT': ent,
           'X-Riot-ClientPlatform':"ewogICAgInBsYXRmb3JtVHlwZSI6ICJQQyIsCiAgICAicGxhdGZvcm1PUyI6ICJXaW5kb3dzIiwKICAgICJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwKICAgICJwbGF0Zm9ybUNoaXBzZXQiOiAiVW5rbm93biIKfQ==",
-          'X-Riot-ClientVersion':'release-02.03-shipping-8-521855'
+          'X-Riot-ClientVersion':'release-02.05-shipping-3-531230'
       },
   }
   return options

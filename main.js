@@ -109,12 +109,12 @@ bot.on('message', async function(msg) {
         }
       }
     }
-    if(arg == CONSTANTS.COMMANDS.PARTY){
+    if(arg == CONSTANTS.COMMANDS.PARTY || arg == CONSTANTS.COMMANDS.PARTYRAWID){
       var userAliases = args[1].toLowerCase().split(",")
       var isStar = (args[2] || "") == "*"
       var members = []
       for(var i = 0; i < userAliases.length; i++){
-        var userId = userIdFromAlias(userAliases[i])
+        var userId = arg == CONSTANTS.COMMANDS.PARTYRAWID ? userAliases[i] : userIdFromAlias(userAliases[i])
         members.push(userId)
       }
       var partyData = MATCH_COMPUTATION.getPartyDataForParty(members, isStar)
@@ -122,9 +122,19 @@ bot.on('message', async function(msg) {
       if(partyData != undefined){
         DISCORD_HANDLER.sendEmbedForPartyStats(msg, partyData)
       }else{
-        msg.channel.send("User has never solo queued.")
+        if(members.length == 1){
+          msg.channel.send("User has never solo queued.")
+        }else{
+          msg.channel.send("This party combo has never played together.")
+        }
       }
       // msg.channel.send(JSON.stringify(partyData))
+    }
+    if(arg == CONSTANTS.COMMANDS.PARTIES){
+      var userId = userIdFromAlias(args[1].toLowerCase())
+      if(userId != null){
+        DISCORD_HANDLER.sendMessageForAllParties(msg, userId)
+      }
     }
     if(arg == CONSTANTS.COMMANDS.AGENTWINLOSS || arg == CONSTANTS.COMMANDS.AWL){
       var userId = userIdFromAlias(args[1].toLowerCase())

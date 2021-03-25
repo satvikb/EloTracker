@@ -47,7 +47,7 @@ function getPartyDataForParty(members, wildcard){
 
         if(validParty){
           totalData["numberParties"] += 1
-          
+
           var playtime = curPartyData["playtimeMillis"]
           var kills = curPartyData["totalKills"]
           var deaths = curPartyData["totalDeaths"]
@@ -128,6 +128,8 @@ function computeTotalStats(){
           let winTeam = matchOverviewData["gameInfo"]["winningTeam"]
           let matchStartTime = matchOverviewData["gameInfo"]["gameStartMillis"]
 
+          var playerAgents = {}
+
           for(var i = 0; i < players.length; i++){
             var player = players[i]
             var playerTeam = player["teamId"]
@@ -198,6 +200,7 @@ function computeTotalStats(){
 
             var scoreKey = playerTeam.toLowerCase()+"Score"
             var agentKey = CONSTANTS.CONTENT.AGENT_NAMES[player["characterId"].toLowerCase()]
+            playerAgents[subject] = player["characterId"].toLowerCase()
 
             var roundsWon = matchOverviewData["gameInfo"][scoreKey]
             roundsWon = roundsWon == undefined ? 0 : roundsWon
@@ -268,7 +271,12 @@ function computeTotalStats(){
                 "playtimeMillis":0,
                 "gamesWon":0,
                 "gamesPlayed":0,
-                "score":0
+                "roundsPlayed":0,
+                "score":0,
+                "grenadeCasts": 0,
+                "ability1Casts": 0,
+                "ability2Casts": 0,
+                "ultimateCasts":0
               }
             }
             statsData[subject]["stats"]["statsByAgent"][agentKey]["kills"] += kills
@@ -280,6 +288,7 @@ function computeTotalStats(){
             if(playerTeam == winTeam){
               statsData[subject]["stats"]["statsByAgent"][agentKey]["gamesWon"] += 1
             }
+            statsData[subject]["stats"]["statsByAgent"][agentKey]["roundsPlayed"] += roundsPlayed
 
 
           }
@@ -301,10 +310,19 @@ function computeTotalStats(){
                   }
                 }
               }
+
+              var agentKey = CONSTANTS.CONTENT.AGENT_NAMES[playerAgents[subject.toLowerCase()]]
+
               statsData[subject]["stats"]["grenadeCasts"] += utilEntity["grenadeCasts"];
               statsData[subject]["stats"]["ability1Casts"] += utilEntity["ability1Casts"];
               statsData[subject]["stats"]["ability2Casts"] += utilEntity["ability2Casts"];
               statsData[subject]["stats"]["ultimateCasts"] += utilEntity["ultimateCasts"];
+
+              statsData[subject]["stats"]["statsByAgent"][agentKey]["grenadeCasts"] += utilEntity["grenadeCasts"];
+              statsData[subject]["stats"]["statsByAgent"][agentKey]["ability1Casts"] += utilEntity["ability1Casts"];
+              statsData[subject]["stats"]["statsByAgent"][agentKey]["ability2Casts"] += utilEntity["ability2Casts"];
+              statsData[subject]["stats"]["statsByAgent"][agentKey]["ultimateCasts"] += utilEntity["ultimateCasts"];
+
             }
           }
           LOG.log(5, "Updated util for players in match.")
@@ -349,9 +367,13 @@ function computeTotalStats(){
                   "roundsWon": 0,
                   "gamesPlayed":0,
                   "gamesWon":0,
-                  "gamesByMap":{}
+                  "gamesByMap":{},
+                  "matchIds":[],
+                  "scores":{}
                 }
               }
+
+              partyData[computeKey]["matchIds"].push(matchId)
 
               var playtime = curPartyData["playtimeMillis"]
               var kills = curPartyData["totalKills"]
@@ -384,6 +406,11 @@ function computeTotalStats(){
 
             }
           }
+          for(var partyKey in partyData){
+            if (partyData.hasOwnProperty(partyKey)) {
+              partyData[partyKey]["matchIds"] = [...new Set(partyData[partyKey]["matchIds"])]
+            }
+          }
           LOG.log(5, "Updated party for players in match.")
 
           LOG.log(4, "Computation done for match "+matchId)
@@ -396,9 +423,9 @@ function computeTotalStats(){
 
   totalPartyData = partyData;
 
-  // TODO remove the data for users with less than N games played
+  // remove the data for users with less than N games played
   var filteredStats = Object.keys(statsData).reduce(function (filteredStats, key) {
-    if (statsData[key]["stats"]["totalGamesPlayed"] > 3) filteredStats[key] = statsData[key];
+    if (statsData[key]["stats"]["totalGamesPlayed"] >= 0) filteredStats[key] = statsData[key];
     return filteredStats;
   }, {});
 

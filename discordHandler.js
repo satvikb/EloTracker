@@ -18,7 +18,7 @@ function calcElo(tierAfter, rpAfter){
 
 async function sendEmbedForEloHistory(msg, eloHistory, args, userFullName){
   var discordId = msg.member.id
-  var numToShow = 3;
+  var numToShow = 5;
   var debugMode = false
   var showAuth = false;
   if(args.length >= 3){
@@ -319,7 +319,7 @@ async function sendEmbedForPartyStats(msg, partyStats){
 
 }
 function sendMessageForMatchHistory(msg, userId, eloHistory, args, userFullName, discordId){
-  var numToShow = 3;
+  var numToShow = 5;
   var debugMode = false
   var showAuth = false;
   if(args.length >= 3){
@@ -512,16 +512,100 @@ function sendMessageForAgentWinLoss(msg, userId, statsByAgent, discordId){
     for(var agentName in statsByAgent){
       if(statsByAgent.hasOwnProperty(agentName)){
         var s = statsByAgent[agentName]
-        tableData.push([agentName, s["gamesWon"], s["gamesPlayed"], ((s["gamesWon"] / s["gamesPlayed"])*100).toFixed(2)+"%", s["score"], s["kills"], s["deaths"], s["assists"], (s["kills"]/s["deaths"]).toFixed(2), (s["playtimeMillis"] / (3600*1000)).toFixed(2)+"h"])
+        tableData.push([agentName, s["gamesWon"]+"/"+s["gamesPlayed"], ((s["gamesWon"] / s["gamesPlayed"])*100).toFixed(2)+"%", (s["score"]/s["gamesPlayed"]).toFixed(1), s["kills"], s["deaths"], s["assists"], (s["kills"]/s["deaths"]).toFixed(2), (s["playtimeMillis"] / (3600*1000)).toFixed(2)+"h"])
       }
     }
 
-    var tableHeaders = ["Agent", "Won", "Played", "Win Rate", "Score", "Kills", "Deaths", "Assists", "K/D", "Playtime"]
+    tableData.sort(function(a,b){
+      // Sort by the 2nd value in each array
+      if ( a[8] == b[8] ) return 0;
+      return parseInt(a[8]) < parseInt(b[8]) ? 1 : -1;
+    });
+
+    var tableHeaders = ["Agent", "Won", "Win Rate", "ACS", "K", "D", "A", "K/D", "Playtime"]
     var table = TABLE_HANDLER.buildAsciiTable("Win/Loss per agent", tableHeaders, tableData, false, false)
     msg.channel.send(table)
   }else{
     msg.channel.send("No data.")
   }
+}
+function sendMessageForAllParties(msg, userId){
+  var partyData = MATCH_COMPUTATION.getPartyData()
+  var totalStats = MATCH_COMPUTATION.getStatsData()
+  var matchHistoryData = MATCH_HANDLER.getMatchHistoryData()
+
+  var playerName = totalStats[userId]["gameName"]+"#"+totalStats[userId]["tagLine"]
+
+  var finalParties = {}
+  for(var partyKey in partyData){
+    if(partyData.hasOwnProperty(partyKey)){
+      var curPartyData = partyData[partyKey]
+      var curMembers = curPartyData["members"]
+      var matches = curPartyData["matchIds"]
+      var playtime = curPartyData["playtimeMillis"]
+
+      if(curMembers.includes(userId)){
+        var curPartyNames = []
+        for(var i = 0; i < curMembers.length; i++){
+          var curUserId = curMembers[i]
+          var userData = totalStats[curUserId]
+          var userName = userData["gameName"]+"#"+userData["tagLine"]
+          curPartyNames.push(userName)
+        }
+        curPartyNames.sort()
+
+        var key = partyKey.toString()
+        if(finalParties[key] == undefined){
+          finalParties[key] = {
+            "members":[],
+            "totalEloChange":0,
+            "playtime":0
+          }
+
+          var totalEloChange = 0
+          var badMatches = 0
+          for(var i = 0; i < matches.length; i++){
+            var matchId = matches[i]
+            var matchInfo = matchHistoryData[userId]["Matches"][matchId]
+            if(matchInfo != undefined){
+              var eloChange = matchInfo["RankedRatingEarned"]
+              totalEloChange += eloChange
+            }else{
+              badMatches += 1
+            }
+
+          }
+          finalParties[key]["totalEloChange"] = totalEloChange
+          finalParties[key]["members"] = curPartyNames
+          finalParties[key]["playtime"] = playtime
+          finalParties[key]["badMatches"] = badMatches
+
+        }
+        // 61669 - 70179
+      }
+    }
+  }
+
+  var absoluteTotalEloChange = 0
+  var tableData = []
+  for(var partyKey in finalParties){
+    if(finalParties.hasOwnProperty(partyKey)){
+      var s = finalParties[partyKey]
+      absoluteTotalEloChange += s["totalEloChange"]
+      tableData.push([s["members"], s["totalEloChange"] + (s["badMatches"] > 0 ? "(w/o "+s["badMatches"]+")" : ""), (s["playtime"] / (3600*1000)).toFixed(2)+"h"])
+    }
+  }
+
+  tableData.sort(function(a,b){
+    // Sort by the 2nd value in each array
+    if ( a[1] == b[1] ) return 0;
+    return parseInt(a[1]) < parseInt(b[1]) ? 1 : -1;
+  });
+
+  var tableHeaders = ["Members", "Elo Delta", "Playtime"]
+  var table = TABLE_HANDLER.buildAsciiTable("Elo change for "+playerName+" (top 5 and bottom 5 out of "+tableData.length+" parties) "+absoluteTotalEloChange+" RP total", tableHeaders, tableData.slice(0,5).concat(tableData.slice(-5)), false, false)
+  msg.channel.send(table)
+
 }
 function sendImageForLatestCompetitiveMatch(msg, userId, discordId){
 
@@ -566,5 +650,6 @@ module.exports = {
   sendEmbedForPartyStats:sendEmbedForPartyStats,
   sendMessageForMatchHistory:sendMessageForMatchHistory,
   sendMessageForAgentWinLoss:sendMessageForAgentWinLoss,
+  sendMessageForAllParties:sendMessageForAllParties,
   sendImageForLatestCompetitiveMatch: sendImageForLatestCompetitiveMatch
 }

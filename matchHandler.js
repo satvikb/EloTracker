@@ -21,10 +21,15 @@ var matchHistoryData = CONSTANTS.readJSONFile('private/matchHistory.json');
 
   Download all match details.
 */
-function matchHistory(userId, completion, computationCompletion){
+function getAllMatchHistory(start,end,total){
+  
+}
+function matchHistory(userId, completion, computationCompletion, start, end){
+  start = start || 0
+  end = end || 20
   LOG.log(4, "Getting match history from competitiveupdates endpoint")
 
-  let url = 'https://pd.na.a.pvp.net/mmr/v1/players/'+userId+"/competitiveupdates?startIndex=0&endIndex=20"
+  let url = 'https://pd.na.a.pvp.net/mmr/v1/players/'+userId+"/competitiveupdates?startIndex="+start+"&endIndex="+end
   AUTH.getRequest(url, function(data){
     let matches = data["Matches"]
     var newMatchIDs = matches.reduce(function(filtered, match) {

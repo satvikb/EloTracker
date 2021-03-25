@@ -166,6 +166,7 @@ function processMatchOverviewAnalysis(path, matchData){
     }
 
     let roundResult = roundData["roundResultCode"]
+    roundResult == "" ? roundData["roundResult"] : roundResult
     let roundCeremony = roundData["roundCeremony"]
 
     if(roundResult != "Surrendered"){
@@ -294,6 +295,7 @@ function processMatchRoundsAnalysis(path, matchData){
   var roundWinInfo = {}
   var roundResultInfo = {}
   var roundScoreTotals = {}
+  var roundTeamDetails = {}
 
   for(var i = 0; i < rounds.length; i++){
     let roundData = rounds[i];
@@ -305,10 +307,23 @@ function processMatchRoundsAnalysis(path, matchData){
     roundWinInfo[""+roundNum] = winningTeam
     roundResultInfo[""+roundNum] = roundResult
 
+    var teamDetails = {
+      "Blue":{
+        "loadoutValue":0,
+        "bankValue":0,
+        "damage":0
+      },
+      "Red":{
+        "loadoutValue":0,
+        "bankValue":0,
+        "damage":0
+      },
+    }
+
     if(roundResult != "Surrendered"){
 
-    let roundPlayerStats = roundData["playerStats"];
-    for(var j = 0; j < roundPlayerStats.length; j++){
+      let roundPlayerStats = roundData["playerStats"];
+      for(var j = 0; j < roundPlayerStats.length; j++){
         let playerData = roundPlayerStats[j];
         let subject = playerData["subject"];
         let playerTeam = teamInfo[subject]
@@ -343,6 +358,8 @@ function processMatchRoundsAnalysis(path, matchData){
           damageBreakdown.push(breakdownEntity)
         }
         roundPlayerData["damage"]["breakdown"] = damageBreakdown
+
+        teamDetails[playerTeam]["damage"] += roundPlayerData["damage"]["total"]
 
         // compute kills
         var killBreakdown = []
@@ -391,17 +408,22 @@ function processMatchRoundsAnalysis(path, matchData){
         economyBreakdown["armor"] = economyData["armor"]
         roundPlayerData["economy"] = economyBreakdown
 
+        teamDetails[playerTeam]["loadoutValue"] += economyData["loadoutValue"]
+        teamDetails[playerTeam]["bankValue"] += economyData["spent"]+economyData["remaining"]
+
         roundPlayerData["score"] = score;
 
         roundDataFinal[subject].push(roundPlayerData)
       }
     }
+    roundTeamDetails[""+roundNum] = teamDetails
   }
 
   allRoundDataFinal["winResults"] = roundWinInfo
   allRoundDataFinal["roundInfo"] = roundDataFinal
   allRoundDataFinal["scoreTotals"] = roundScoreTotals
   allRoundDataFinal["roundResults"] = roundResultInfo
+  allRoundDataFinal["roundTeamDetails"] = roundTeamDetails
 
   allRoundDataFinal["playerCharacters"] = playerCharacters
   CONSTANTS.writeJSONFile(path+'/roundStats.json', allRoundDataFinal)

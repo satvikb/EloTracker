@@ -16,14 +16,37 @@ let LEADERBOARD_MATCHES_PROCESSED_PATH = "leaderboard/matches/processed/"
 
 var AGENT_NAMES = {}
 var AGENT_PORTRAITS = {}
+var AGENT_BUST_PORTRAITS = {}
+var AGENT_ABILITY_ICONS = {}
 for (var i = 0; i < contentData["Characters"].length; i++) {
   var id = contentData["Characters"][i]["ID"].toLowerCase()
   AGENT_NAMES[id] = contentData["Characters"][i]["Name"]
 
-  var portraitPath = "images/agents/"+id+".png"
+  var portraitPath = "images/agents/displayicons/"+id+".png"
   if(fs.existsSync(portraitPath)){
-    // console.log("LOADING "+id+"__"+contentData["Characters"][i]["Name"])
     AGENT_PORTRAITS[id] = fs.readFileSync(portraitPath)
+  }
+
+  var bustPortraitPath = "images/agents/bustportraits/"+id+".png"
+  if(fs.existsSync(bustPortraitPath)){
+    AGENT_BUST_PORTRAITS[id] = fs.readFileSync(bustPortraitPath)
+  }
+
+  var abilityFolder = "images/agents/abilityicons/"+id+"/"
+  if(fs.existsSync(abilityFolder)){
+    AGENT_ABILITY_ICONS[id] = {}
+    if(fs.existsSync(abilityFolder+"ability1.png")){
+      AGENT_ABILITY_ICONS[id]["ability1"] = fs.readFileSync(abilityFolder+"ability1.png")
+    }
+    if(fs.existsSync(abilityFolder+"ability2.png")){
+      AGENT_ABILITY_ICONS[id]["ability2"] = fs.readFileSync(abilityFolder+"ability2.png")
+    }
+    if(fs.existsSync(abilityFolder+"grenade.png")){
+      AGENT_ABILITY_ICONS[id]["grenade"] = fs.readFileSync(abilityFolder+"grenade.png")
+    }
+    if(fs.existsSync(abilityFolder+"ultimate.png")){
+      AGENT_ABILITY_ICONS[id]["ultimate"] = fs.readFileSync(abilityFolder+"ultimate.png")
+    }
   }
 }
 
@@ -48,16 +71,21 @@ for (var i = 0; i < contentData["Maps"].length; i++) {
     MAP_SPLASHES[asset] = fs.readFileSync(splashPath)
   }
 }
+console.log("Loading static content done")
 
 const download = require('image-downloader')
 
 function loadImages(){
   for (var i = 0; i < contentData["Characters"].length; i++) {
     var id = contentData["Characters"][i]["ID"].toLowerCase()
-    var url = 'https://media.valorant-api.com/agents/'+id+'/displayicon.png'
+    var url = 'https://media.valorant-api.com/agents/'+id+'/abilities/ultimate/displayicon.png'
+
+
+    // fs.mkdirSync('images/agents/abilityicons/'+id);
+
     const options = {
       url: url,
-      dest: 'images/agents/'+id+".png"                // will be saved to /path/to/dest/image.jpg
+      dest: 'images/agents/abilityicons/'+id+"/ultimate.png"                // will be saved to /path/to/dest/image.jpg
     }
     // console.log("DL "+url)
     download.image(options)
@@ -153,6 +181,8 @@ module.exports = {
     STATS:"stats",
     PLAYTIME:"playtime",
     PARTY:"party",
+    PARTYRAWID:"partywithids",
+    PARTIES:"parties",
     PROCESSALL:"processall",
     COMPUTEALL:"computeall",
     SETCOLOR:"setcolor",
@@ -165,6 +195,8 @@ module.exports = {
   CONTENT:{
     AGENT_NAMES: AGENT_NAMES,
     AGENT_PORTRAITS: AGENT_PORTRAITS,
+    AGENT_BUST_PORTRAITS:AGENT_BUST_PORTRAITS,
+    AGENT_ABILITY_ICONS: AGENT_ABILITY_ICONS,
     MAP_NAMES: MAP_NAMES,
     MAP_SPLASHES: MAP_SPLASHES,
     RANK_IMAGES: RANK_IMAGES
