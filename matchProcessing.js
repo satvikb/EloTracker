@@ -42,7 +42,7 @@ function processMatchData(matchData, force){
     CONSTANTS.writeJSONFile('private/processedMatches.json', processedMatchesData)
     LOG.log(4, "Updated processed matches file")
   }else{
-    LOG.log(6, "Not processing match "+matchId)
+    LOG.log(7, "Not processing match "+matchId)
   }
 }
 function processMatchStatAnalysis(path, matchData){
@@ -51,6 +51,9 @@ function processMatchStatAnalysis(path, matchData){
 
   var hitsData = {}
   var utilData = {}
+  var gunsData = {}
+
+  LOG.log(7, "Processing stat analysis "+path)
 
   for(var i = 0; i < rounds.length; i++){
     let roundData = rounds[i];
@@ -59,8 +62,14 @@ function processMatchStatAnalysis(path, matchData){
       let playerData = roundPlayerStats[j];
       let subject = playerData["subject"]
       let damageData = playerData["damage"];
+
+      // only with kills can we confirm the weapon used
+      var killsByDamage = {}
       for(var k = 0; k < damageData.length; k++){
         let damageEntity = damageData[k];
+        var damage = damageEntity["damage"]
+        var receiver = damageEntity["receiver"]
+
         if(hitsData[subject] == undefined){
           hitsData[subject] = {
             "headshots":0,
@@ -71,7 +80,71 @@ function processMatchStatAnalysis(path, matchData){
         hitsData[subject]["headshots"] += damageEntity["headshots"];
         hitsData[subject]["bodyshots"] += damageEntity["bodyshots"];
         hitsData[subject]["legshots"] += damageEntity["legshots"];
+
+        if(damage >= 150){
+          // a kill
+          if(killsByDamage[subject] == undefined){
+            killsByDamage[subject] = {}
+          }
+          killsByDamage[subject][receiver] = damageEntity
+        }
       }
+
+      let killData = playerData["kills"];
+      for(var k = 0; k < killData.length; k++){
+        if(gunsData[subject] == undefined){
+          gunsData[subject] = {}
+        }
+
+        var kill = killData[k]
+
+        var finishingDamage = kill["finishingDamage"]
+        var finishingWeapon = finishingDamage["damageItem"]
+        var secondary = finishingDamage["isSecondaryFireMode"]
+
+        if(gunsData[subject][finishingWeapon] == undefined){
+          gunsData[subject][finishingWeapon] = {
+            "hits":{
+              "headshots":0,
+              "bodyshots":0,
+              "legshots":0
+            },
+            "kills":0,
+            "secondaryFireKills":0,
+            "totalDistance":0
+          }
+        }
+
+        var victim = kill["victim"]
+        var victimLocation = kill["victimLocation"]
+
+        var playerLocations = kill["playerLocations"]
+        for(var l = 0; l < playerLocations.length; l++){
+          var pl = playerLocations[l]
+          if(pl["subject"] == subject){
+            var sl = pl["location"]
+            // the player that got the kill
+            var a = victimLocation["x"]-sl["x"]
+            var b = victimLocation["y"]-sl["y"]
+            var distance = Math.sqrt(a*a + b*b)
+            gunsData[subject][finishingWeapon]["totalDistance"] += distance
+          }
+        }
+
+        gunsData[subject][finishingWeapon]["kills"] += 1
+        gunsData[subject][finishingWeapon]["secondaryFireKills"] += secondary ? 1 : 0
+
+        if(killsByDamage[subject] != undefined){ // subject got kills
+          var killByDamage = killsByDamage[subject][victim]
+          if(killByDamage != undefined){
+            gunsData[subject][finishingWeapon]["hits"]["headshots"] += killByDamage["headshots"]
+            gunsData[subject][finishingWeapon]["hits"]["bodyshots"] += killByDamage["bodyshots"]
+            gunsData[subject][finishingWeapon]["hits"]["legshots"] += killByDamage["legshots"]
+          }
+        }
+      }
+      // console.log("")
+
     }
   }
 
@@ -96,7 +169,8 @@ function processMatchStatAnalysis(path, matchData){
 
   var finalData = {
     "hits":hitsData,
-    "util":utilData
+    "util":utilData,
+    "guns":gunsData
   }
   CONSTANTS.writeJSONFile(path+'/stats.json', finalData)
   LOG.log(4, "Processed stats analysis "+path)

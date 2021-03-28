@@ -335,9 +335,9 @@ function getLatestMatchImage(userId, overviewData, roundData, partyData, statsDa
       function comparisonRow(i,value1,text,value2){
         let rowY = tableYStart+tableHeaderHeight+(i*rowHeight) // the y middle of row
         crect("rgba(20,20,20,0.4)",tableX,rowY-(rowHeight/2),tableWidth,rowHeight)
-        ctext(value1,tableLeftColumnX,rowY,value1 > value2 ? POSITIVE_COLOR : NEGATIVE_COLOR,"30px Impact","center","middle")
+        ctext(value1,tableLeftColumnX,rowY,parseInt(value1) > parseInt(value2) ? POSITIVE_COLOR : NEGATIVE_COLOR,"30px Impact","center","middle")
         ctext(text,tableMiddleColumnX,rowY,"white","20px Impact","center","middle")
-        ctext(value2,tableRightColumnX,rowY,value2 > value1 ? POSITIVE_COLOR : NEGATIVE_COLOR,"30px Impact","center","middle")
+        ctext(value2,tableRightColumnX,rowY,parseInt(value2) > parseInt(value1) ? POSITIVE_COLOR : NEGATIVE_COLOR,"30px Impact","center","middle")
       }
 
       var gameHeadshotPercent = ((statsData["hits"][userId]["headshots"] / (statsData["hits"][userId]["headshots"]+statsData["hits"][userId]["bodyshots"]+statsData["hits"][userId]["legshots"]))*100).toFixed(2)

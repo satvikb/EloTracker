@@ -8,6 +8,12 @@ const fs = require('fs');
 var LOG = require('./logging');
 
 var CONSTANTS = require('./constants');
+
+// todo move to constants
+var ETH_PER_DAY_PER_HASHRATE = 0.00005955// * 0.99 // for conservative
+var ETH_TO_USD = 1612.37// * 0.995
+var USD_PAYOUT_THRESHOLD = ETH_TO_USD*0.1; // 0.1 eth
+
 var dateFormat = require('dateformat');
 const discord = require('discord.js');
 
@@ -663,6 +669,128 @@ function setUserColor(discordUserId, color){
   userColors[discordUserId] = color
   CONSTANTS.writeJSONFile('private/userColors.json', userColors)
 }
+function sendMiningCalculations(msg, args){
+  var persons = {"individuals":[]}
+
+  var totalDailyMinedEth = 0;
+  for(var i = 1; i < args.length; i += 2){
+    var person = {}
+
+    var hashrate = args[i]
+    var hoursPerDay = args[i+1]
+    person["hashrate"] = hashrate
+    person["hoursperday"] = hoursPerDay
+
+    var percentOfDay = hoursPerDay/24;
+    var ethPerDay = ETH_PER_DAY_PER_HASHRATE*hashrate*percentOfDay
+    var ethForMonth = ethPerDay*30
+    person["perdayminedETH"] = ethPerDay
+    person["perdayminedUSD"] = ethPerDay*ETH_TO_USD
+    person["USDperHour"] = (ethPerDay*ETH_TO_USD)/24
+    person["30dayminedETH"] = ethForMonth
+    person["30dayminedUSD"] = ethForMonth*ETH_TO_USD
+
+    totalDailyMinedEth += ethPerDay
+    persons["individuals"].push(person)
+  }
+
+  persons["totalPerDayETH"] = totalDailyMinedEth
+  persons["totalPerDayUSD"] = totalDailyMinedEth*ETH_TO_USD
+  persons["totalPer30daysETH"] = totalDailyMinedEth*30
+  persons["totalPer30daysUSD"] = totalDailyMinedEth*30*ETH_TO_USD
+
+  persons["timeToHitThreshold"] = (USD_PAYOUT_THRESHOLD/(totalDailyMinedEth*ETH_TO_USD)).toFixed(2)+" days"
+
+  for(var i = 0; i < persons["individuals"].length; i++){
+    persons["individuals"][i]["USDEveryPayoutRaw"] = USD_PAYOUT_THRESHOLD * (persons["individuals"][i]["perdayminedETH"]/persons["totalPerDayETH"])
+    persons["individuals"][i]["USDEveryPayout90percent"] = persons["individuals"][i]["USDEveryPayoutRaw"]*0.9
+  }
+
+  msg.channel.send("```"+JSON.stringify(persons, null, 2)+"```")
+}
+function sendMiningHistory(msg){
+  var currentMiningHistory = CONSTANTS.readJSONFile("private/mining.json")
+
+  function sharesUntil(start, end){
+    start = start || 0
+    end = end || Number.MAX_SAFE_INTEGER
+
+    var latestTimeHistory = 0;
+    var latestUnpaid = 0;
+    var shareTotal = 0
+
+    var totalHistory = currentMiningHistory["totalHistory"]
+    for(var time in totalHistory){
+      if(totalHistory.hasOwnProperty(time)){
+        if(time != undefined && totalHistory[time]["validShares"] != undefined){
+          shareTotal += totalHistory[time]["validShares"]
+          // console.log(time+"_"+totalHistory[time]["validShares"]+"___"+(time == undefined))
+        }
+      }
+    }
+    // console.log("Total "+shareTotal)
+
+    var workerShares = {}
+    var workerStats = currentMiningHistory["workerStats"]
+    for(var time in workerStats){
+      if(workerStats.hasOwnProperty(time)){
+        var workers = workerStats[time]["workers"]
+
+        if(time > latestTimeHistory){
+          latestTimeHistory = time
+          latestUnpaid = workerStats[time]["unpaid"] || 0
+        }
+
+        for(var i = 0; i < workers.length; i++){
+          var worker = workers[i]
+          var name = worker["worker"]
+          if(workerShares[name] == undefined){
+            workerShares[name] = {
+              "worker":name,
+              "shares":0
+            }
+          }
+          workerShares[name]["shares"] += worker["validShares"]
+        }
+      }
+    }
+
+    return {
+      "totalShares":shareTotal,
+      "workerShares":workerShares,
+      "unpaidTotal":latestUnpaid
+    }
+  }
+
+  /*
+    special case pre bot
+  */
+  var totalSharesPre = sharesUntil()
+  var wD = totalSharesPre["workerShares"]
+
+  var weiTotal = totalSharesPre["unpaidTotal"];
+  var weiPerShare = (weiTotal / totalSharesPre["totalShares"])
+
+  var headers = ["worker", "shares", "eth", "usd"]
+
+  var data = []
+  for(var name in wD){
+    if(wD.hasOwnProperty(name)){
+      var workerShares = wD[name]["shares"]
+      var workerWei = weiPerShare * workerShares
+      var eth = workerWei / Math.pow(10, 18)
+      var usd = ETH_TO_USD*eth
+      data.push([name, workerShares, eth, usd >= 0.01 ? usd.toFixed(2) : usd.toFixed(8)])
+    }
+  }
+
+  var totalUSD = (weiTotal / Math.pow(10, 18)) * ETH_TO_USD
+
+  // msg.channel.send(JSON.stringify(totalSharesPre)+"___Wei per share: "+)
+
+  var table = TABLE_HANDLER.buildAsciiTable("Mining history. Total shares: "+totalSharesPre["totalShares"]+" / Total USD: "+totalUSD.toFixed(2), headers, data, false, false)
+  msg.channel.send(table)
+}
 module.exports = {
   sendEmbedForEloHistory:sendEmbedForEloHistory,
   sendEmbedForPlayerStats:sendEmbedForPlayerStats,
@@ -670,5 +798,7 @@ module.exports = {
   sendMessageForMatchHistory:sendMessageForMatchHistory,
   sendMessageForAgentWinLoss:sendMessageForAgentWinLoss,
   sendMessageForAllParties:sendMessageForAllParties,
-  sendImageForLatestCompetitiveMatch: sendImageForLatestCompetitiveMatch
+  sendImageForLatestCompetitiveMatch: sendImageForLatestCompetitiveMatch,
+  sendMiningCalculations:sendMiningCalculations,
+  sendMiningHistory:sendMiningHistory
 }

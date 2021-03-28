@@ -166,10 +166,20 @@ bot.on('message', async function(msg) {
         msg.channel.send("Not a valid color")
       }
     }
+    if(arg == CONSTANTS.COMMANDS.MINING){
+      DISCORD_HANDLER.sendMiningCalculations(msg, args)
+    }
+    if(arg == CONSTANTS.COMMANDS.MININGHISTORY){
+      DISCORD_HANDLER.sendMiningHistory(msg)
+    }
   }
 })
 
-cron.schedule('24 * * * *', async () => {
+cron.schedule('*/8 * * * *', async () => {
+  updateMining()
+})
+
+cron.schedule('25 * * * *', async () => {
   LOG.log(2, '[AUTO] Getting Elo History for all users');
   for (var alias in subjectIdAliases) {
     // check if the property/key is defined in the object itself, not in parent
@@ -183,7 +193,64 @@ cron.schedule('24 * * * *', async () => {
     }
   }
   MATCH_COMPUTATION.computeAggregate()
+
 });
+
+function updateMining(){
+  console.log("update mining")
+  var options = {
+      url: "https://api.ethermine.org/miner/"+process.env.WALLET+"/history",
+      method: 'GET'
+  }
+
+  request(options, function(err, res, body) {
+    var currentMiningHistory = CONSTANTS.readJSONFile("private/mining.json")
+
+    var historyData = JSON.parse(body)["data"]
+    for(var i = 0; i < historyData.length; i++){
+      var historyInfo = historyData[i]
+      var time = historyInfo["time"]
+
+      currentMiningHistory["totalHistory"][time+""] = historyInfo
+    }
+
+    options = {
+        url: "https://api.ethermine.org/miner/"+process.env.WALLET+"/dashboard",
+        method: 'GET'
+    }
+    request(options, function(err, res, body1) {
+
+      var statData = JSON.parse(body1)["data"]
+
+      var workersData = statData["workers"]
+      var currentStat = statData["currentStatistics"]
+
+      // var currentStatTime = statData["time"]
+      // if(currentMiningHistory["totalHistory"][currentStatTime+""] == undefined){
+      //   currentMiningHistory["totalHistory"][currentStatTime+""] = {}
+      // }
+      // currentMiningHistory["totalHistory"][currentStatTime+""]["unpaid"] = currentStat["unpaid"]
+
+      for(var i = 0; i < workersData.length; i++){
+        var workerInfo = workersData[i]
+        var time = workerInfo["time"]
+
+        if(currentMiningHistory["workerStats"][time+""] == undefined){
+          currentMiningHistory["workerStats"][time+""] = {
+            "workers":[],
+            "unpaid":currentStat["unpaid"]
+          }
+        }
+        currentMiningHistory["workerStats"][time+""]["workers"].push(workerInfo)
+      }
+
+      CONSTANTS.writeJSONFile("private/mining.json", currentMiningHistory)
+      console.log("Saved to mining. Unpaid: "+currentStat["unpaid"])
+    });
+  });
+}
+
+updateMining()
 
 function sleep(ms) {
   return new Promise((resolve) => {

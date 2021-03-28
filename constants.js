@@ -189,7 +189,9 @@ module.exports = {
     HISTORY:"history",
     AGENTWINLOSS:"agentwinloss",
     AWL:"awl",
-    HISTORYIMAGE:"lm" // latestmatch
+    HISTORYIMAGE:"lm", // latestmatch,
+    MINING:"mining",
+    MININGHISTORY:"mininghistory"
   },
   DISCORD_ADMIN_USERS:["295701594715062272"],
   CONTENT:{
