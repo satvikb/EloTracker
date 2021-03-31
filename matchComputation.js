@@ -164,7 +164,8 @@ function computeTotalStats(){
                   "ability1Casts": 0,
                   "ability2Casts": 0,
                   "ultimateCasts": 0,
-                  "statsByAgent":{}
+                  "statsByAgent":{},
+                  "guns":{}
                 }
               }
             }
@@ -306,7 +307,7 @@ function computeTotalStats(){
                     "grenadeCasts": 0,
                     "ability1Casts": 0,
                     "ability2Casts": 0,
-                    "ultimateCasts":0
+                    "ultimateCasts":0,
                   }
                 }
               }
@@ -347,6 +348,50 @@ function computeTotalStats(){
           }
           LOG.log(5, "Updated hits for players in match.")
 
+          let guns = playerStatsData["guns"]
+          for (var subject in guns) {
+            if (hits.hasOwnProperty(subject)) {
+              let hitsEntity = hits[subject];
+              if(statsData[subject] == undefined){
+                statsData[subject] = {
+                  "stats":{
+                    "guns":{}
+                  }
+                }
+              }
+
+              if(statsData[subject]["stats"]["guns"] == undefined){
+                statsData[subject]["stats"]["guns"] = {}
+              }
+
+              for (var gunId in guns[subject]) {
+                if (guns[subject].hasOwnProperty(gunId)) {
+                  var gunData = guns[subject][gunId]
+                  if(statsData[subject]["stats"]["guns"][gunId] == undefined){
+                    statsData[subject]["stats"]["guns"][gunId] = {
+                      "hits": {
+                        "headshots": 0,
+                        "bodyshots": 0,
+                        "legshots": 0
+                      },
+                      "kills": 0,
+                      "secondaryFireKills": 0,
+                      "totalDistance": 0
+                    }
+                  }
+                  statsData[subject]["stats"]["guns"][gunId]["hits"]["headshots"] += gunData["hits"]["headshots"];
+                  statsData[subject]["stats"]["guns"][gunId]["hits"]["bodyshots"] += gunData["hits"]["bodyshots"]
+                  statsData[subject]["stats"]["guns"][gunId]["hits"]["legshots"] += gunData["hits"]["legshots"]
+
+                  statsData[subject]["stats"]["guns"][gunId]["kills"] += gunData["kills"]
+                  statsData[subject]["stats"]["guns"][gunId]["secondaryFireKills"] += gunData["secondaryFireKills"]
+                  statsData[subject]["stats"]["guns"][gunId]["totalDistance"] += gunData["totalDistance"]
+                }
+              }
+
+
+            }
+          }
 
           let matchPartyData = CONSTANTS.readJSONFile(processedPath + matchId + "/party.json")
           for(var partyId in matchPartyData){

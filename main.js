@@ -172,6 +172,12 @@ bot.on('message', async function(msg) {
     if(arg == CONSTANTS.COMMANDS.MININGHISTORY){
       DISCORD_HANDLER.sendMiningHistory(msg)
     }
+    if(arg == CONSTANTS.COMMANDS.GUNS){
+      var userId = userIdFromAlias(args[1].toLowerCase())
+      if(userId != null){
+        DISCORD_HANDLER.sendEmbedForPlayerGunStats(msg, userId)
+      }
+    }
   }
 })
 

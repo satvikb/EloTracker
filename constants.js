@@ -71,6 +71,13 @@ for (var i = 0; i < contentData["Maps"].length; i++) {
     MAP_SPLASHES[asset] = fs.readFileSync(splashPath)
   }
 }
+
+var GUN_NAMES = {}
+for (var i = 0; i < contentData["Equips"].length; i++) {
+  var id = contentData["Equips"][i]["ID"]
+  var name = contentData["Equips"][i]["Name"]
+  GUN_NAMES[id] = name
+}
 console.log("Loading static content done")
 
 const download = require('image-downloader')
@@ -191,7 +198,8 @@ module.exports = {
     AWL:"awl",
     HISTORYIMAGE:"lm", // latestmatch,
     MINING:"mining",
-    MININGHISTORY:"mininghistory"
+    MININGHISTORY:"mininghistory",
+    GUNS:"guns"
   },
   DISCORD_ADMIN_USERS:["295701594715062272"],
   CONTENT:{
@@ -201,6 +209,7 @@ module.exports = {
     AGENT_ABILITY_ICONS: AGENT_ABILITY_ICONS,
     MAP_NAMES: MAP_NAMES,
     MAP_SPLASHES: MAP_SPLASHES,
-    RANK_IMAGES: RANK_IMAGES
+    RANK_IMAGES: RANK_IMAGES,
+    GUN_NAMES: GUN_NAMES
   }
 }

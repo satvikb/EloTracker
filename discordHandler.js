@@ -284,6 +284,50 @@ async function sendEmbedForPlayerStats(msg, userId){
     msg.channel.send("Not enough game data to show stats. Play more games.")
   }
 }
+async function sendEmbedForPlayerGunStats(msg, userId){
+  var discordId = msg.member.id
+
+  var statsObject = MATCH_COMPUTATION.getStatsData()
+  var userStats = statsObject[userId]
+  if(userStats != undefined){
+
+    let userColor = userColors[discordId] == undefined ? CONSTANTS.DEFAULT_MSG_COLOR : userColors[discordId]
+
+    var userFullName = userStats["gameName"]+"#"+userStats["tagLine"]
+    const embed = new discord.MessageEmbed()
+          .setColor(userColor)
+          .setTitle('Gun stats for ACT 2')
+          // .setURL('https://discord.js.org/')
+          .setAuthor(userFullName, '', '')
+
+    var statData = userStats["stats"]
+
+    var totalKills = 0; // debug
+    function addFieldForGun(gunId){
+      var gunName = CONSTANTS.CONTENT.GUN_NAMES[gunId]
+      var gunData = statData["guns"][gunId]
+      var kills = gunData["kills"]
+      var hit = gunData["hits"]
+      var hs = ((hit["headshots"] / (hit["headshots"] + hit["bodyshots"] + hit["legshots"]))*100).toFixed(2)
+      var avgDist = (gunData["totalDistance"] / kills).toFixed(2)
+      embed.addField("**"+gunName+"**", kills+ " ("+hs+"%) "+avgDist)
+
+      totalKills += kills
+    }
+
+    for(var gunId in statData["guns"]){
+      if(statData["guns"].hasOwnProperty(gunId)){
+        addFieldForGun(gunId)
+      }
+    }
+
+    console.log("T "+totalKills)
+
+    var sent = await msg.channel.send({embed})
+  }else{
+    msg.channel.send("Not enough game data to show stats. Play more games.")
+  }
+}
 async function sendEmbedForPartyStats(msg, partyStats){
   var discordId = msg.member.id
   let userColor = userColors[discordId] == undefined ? CONSTANTS.DEFAULT_MSG_COLOR : userColors[discordId]
@@ -794,6 +838,7 @@ function sendMiningHistory(msg){
 module.exports = {
   sendEmbedForEloHistory:sendEmbedForEloHistory,
   sendEmbedForPlayerStats:sendEmbedForPlayerStats,
+  sendEmbedForPlayerGunStats:sendEmbedForPlayerGunStats,
   sendEmbedForPartyStats:sendEmbedForPartyStats,
   sendMessageForMatchHistory:sendMessageForMatchHistory,
   sendMessageForAgentWinLoss:sendMessageForAgentWinLoss,
