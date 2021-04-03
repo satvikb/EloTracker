@@ -181,9 +181,9 @@ bot.on('message', async function(msg) {
   }
 })
 
-cron.schedule('*/8 * * * *', async () => {
-  updateMining()
-})
+// cron.schedule('*/8 * * * *', async () => {
+//   updateMining()
+// })
 
 cron.schedule('25 * * * *', async () => {
   LOG.log(2, '[AUTO] Getting Elo History for all users');
@@ -256,7 +256,7 @@ function updateMining(){
   });
 }
 
-updateMining()
+// updateMining()
 
 function sleep(ms) {
   return new Promise((resolve) => {

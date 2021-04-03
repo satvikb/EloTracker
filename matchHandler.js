@@ -22,7 +22,7 @@ var matchHistoryData = CONSTANTS.readJSONFile('private/matchHistory.json');
   Download all match details.
 */
 function getAllMatchHistory(start,end,total){
-  
+
 }
 function matchHistory(userId, completion, computationCompletion, start, end){
   start = start || 0
@@ -100,7 +100,8 @@ function scoreboardForMatch(matchId){
     LOG.log(4, "Got scoreboard (overview data) for match "+matchId)
     return matchOverviewData
   }catch(err){
-    console.log("TOTAL ERR "+err)
+    console.log("No Scoreboard Data "+err)
+    return undefined
   }
 }
 function saveMatchHistory(userId, matchInfo){
@@ -165,26 +166,32 @@ function downloadMatchIDs(userId, matchIDs, completion){
           LOG.log(6, "Reprocessed "+matchId)
         }
       }
-      LOG.log(4, "Downloading matches...")
-      Promise.all(allRequests).then((allMatchData) => {
-        LOG.log(4, "Saving and processing "+allMatchData.length+" matches")
-        for(var i = 0; i < allMatchData.length; i++){
-          var matchData = JSON.parse(allMatchData[i])
-          var matchId = matchData["matchInfo"]["matchId"]
+      LOG.log(4, "Downloading matches... "+(allRequests.length))
+      Promise.allSettled(allRequests).then((results) => {
+        LOG.log(4, "Saving and processing "+results.length+" matches")
+        results.forEach(function(result){
+          if(result.status == "fulfilled"){
+            var matchData = JSON.parse(result.value)
+            var matchId = matchData["matchInfo"]["matchId"]
 
-          matchesDownloadedData[userId][matchId] = 1
-          saveMatchToFile(matchId, matchData)
-          // TODO process here?
-          PROCESSING.processMatchData(matchData)
-          LOG.log(6, "Processed and saved match "+matchId)
-        }
+            matchesDownloadedData[userId][matchId] = 1
+            saveMatchToFile(matchId, matchData)
+
+            PROCESSING.processMatchData(matchData)
+            LOG.log(6, "Processed and saved match "+matchId)
+          }else{
+            LOG.log(4, "Match not downloaded: "+result.reason.error.message)
+          }
+        }); // end of foreach
+
         CONSTANTS.writeJSONFile('private/matchesDownloaded.json', matchesDownloadedData)
         LOG.log(4, "Saving matchesDownloaded")
         COMPUTATION.computeAggregate()
         if(completion != null){
           completion()
         }
-      })
+      });
+
     })
   }
 }

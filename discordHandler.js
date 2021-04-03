@@ -303,16 +303,19 @@ async function sendEmbedForPlayerGunStats(msg, userId){
     var statData = userStats["stats"]
 
     var totalKills = 0; // debug
+    var count = 0;
     function addFieldForGun(gunId){
-      var gunName = CONSTANTS.CONTENT.GUN_NAMES[gunId]
+      var gunName = CONSTANTS.CONTENT.GUN_NAMES[gunId] || gunId
       var gunData = statData["guns"][gunId]
       var kills = gunData["kills"]
       var hit = gunData["hits"]
       var hs = ((hit["headshots"] / (hit["headshots"] + hit["bodyshots"] + hit["legshots"]))*100).toFixed(2)
-      var avgDist = (gunData["totalDistance"] / kills).toFixed(2)
-      embed.addField("**"+gunName+"**", kills+ " ("+hs+"%) "+avgDist)
+      var avgDist = ((gunData["totalDistance"] / kills)/100).toFixed(2)+"m"
+      embed.addField("**"+gunName+"**", kills+ "k (HS: "+hs+"%) "+avgDist, (count % 3) == 0 ? false : true)
 
       totalKills += kills
+
+      count += 1
     }
 
     for(var gunId in statData["guns"]){
@@ -495,53 +498,58 @@ function sendMessageForMatchHistory(msg, userId, eloHistory, args, userFullName,
         compGamesShowed += 1
 
         var scoreboard = MATCH_HANDLER.scoreboardForMatch(matchID)
-        var players = scoreboard["scoreboard"]
-        var gameInfo = scoreboard["gameInfo"]
-        var winningTeam = gameInfo["winningTeam"]
-        var blueScore = gameInfo["blueScore"]
-        var redScore = gameInfo["redScore"]
-        var mapAssetPath = gameInfo["mapId"].split("/")
-        var mapRawAsset = mapAssetPath[mapAssetPath.length-1]
 
-        for(var p = 0; p < players.length; p++){
-          var player = players[p]
-          if(player["subject"] == userId){
-            var playerStats = player["stats"]
+        if(scoreboard != undefined){
+          var players = scoreboard["scoreboard"]
+          var gameInfo = scoreboard["gameInfo"]
+          var winningTeam = gameInfo["winningTeam"]
+          var blueScore = gameInfo["blueScore"]
+          var redScore = gameInfo["redScore"]
+          var mapAssetPath = gameInfo["mapId"].split("/")
+          var mapRawAsset = mapAssetPath[mapAssetPath.length-1]
 
-            var characterId = player["characterId"]
-            var playerTeam = player["teamId"]
-            var won = playerTeam == winningTeam
-            var kills = playerStats["kills"]
-            var playerScore = playerStats["score"]
-            var deaths = playerStats["deaths"]
-            var assists = playerStats["assists"]
-            var firstBloods = playerStats["firstBloods"]
-            var plants = playerStats["plants"]
-            var defuses = playerStats["defuses"]
-            var allyScore = playerTeam == "Red" ? redScore : blueScore
-            var enemyScore = playerTeam == "Red" ? blueScore : redScore
-            var teamMVP = userId == gameInfo["teamMVP"]
-            var matchMVP = userId == gameInfo["matchMVP"]
+          for(var p = 0; p < players.length; p++){
+            var player = players[p]
+            if(player["subject"] == userId){
+              var playerStats = player["stats"]
+
+              var characterId = player["characterId"]
+              var playerTeam = player["teamId"]
+              var won = playerTeam == winningTeam
+              var kills = playerStats["kills"]
+              var playerScore = playerStats["score"]
+              var deaths = playerStats["deaths"]
+              var assists = playerStats["assists"]
+              var firstBloods = playerStats["firstBloods"]
+              var plants = playerStats["plants"]
+              var defuses = playerStats["defuses"]
+              var allyScore = playerTeam == "Red" ? redScore : blueScore
+              var enemyScore = playerTeam == "Red" ? blueScore : redScore
+              var teamMVP = userId == gameInfo["teamMVP"]
+              var matchMVP = userId == gameInfo["matchMVP"]
 
 
-            var agentName = CONSTANTS.CONTENT.AGENT_NAMES[characterId.toLowerCase()]
-            var kda = kills+" / "+deaths+" / "+assists
-            var place = (9-p)
-            var placeText = place == 0 ? "1st" : (place == 1 ? "2nd" : (place == 2 ? "3rd" : (place+1)+"th"))
-            var mvpText = teamMVP ? "(Team MVP)" : (matchMVP ? "(Match MVP)" : "")
-            var combatScoreText = playerScore+" ("+placeText+") "+mvpText
-            var wonText = won ? "VICTORY" : "DEFEAT"
-            var scoreText = allyScore + " - " + enemyScore
-            var map = CONSTANTS.CONTENT.MAP_NAMES[mapRawAsset.toLowerCase()]
+              var agentName = CONSTANTS.CONTENT.AGENT_NAMES[characterId.toLowerCase()]
+              var kda = kills+" / "+deaths+" / "+assists
+              var place = (9-p)
+              var placeText = place == 0 ? "1st" : (place == 1 ? "2nd" : (place == 2 ? "3rd" : (place+1)+"th"))
+              var mvpText = teamMVP ? "(Team MVP)" : (matchMVP ? "(Match MVP)" : "")
+              var combatScoreText = playerScore+" ("+placeText+") "+mvpText
+              var wonText = won ? "VICTORY" : "DEFEAT"
+              var scoreText = allyScore + " - " + enemyScore
+              var map = CONSTANTS.CONTENT.MAP_NAMES[mapRawAsset.toLowerCase()]
 
-            if(reducedColumns){
-              // var tableHeaders = ["Agent", "KDA", "Score & MVPs", "Result", "Score", "Map"]
-              tableData.push([agentName, kda, combatScoreText, wonText[0], scoreText, map[0], eloText, fieldDay])
-            }else{
-              tableData.push([agentName, kda, combatScoreText, wonText, scoreText, map, eloText, fieldDay])
+              if(reducedColumns){
+                // var tableHeaders = ["Agent", "KDA", "Score & MVPs", "Result", "Score", "Map"]
+                tableData.push([agentName, kda, combatScoreText, wonText[0], scoreText, map[0], eloText, fieldDay])
+              }else{
+                tableData.push([agentName, kda, combatScoreText, wonText, scoreText, map, eloText, fieldDay])
+              }
             }
           }
         }
+
+
       }
     }
   }
