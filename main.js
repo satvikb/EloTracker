@@ -13,7 +13,6 @@ var dateFormat = require('dateformat');
 var cron = require('node-cron');
 
 var CONSTANTS = require('./constants');
-var AUTH = require('./auth');
 var MATCH_HANDLER = require('./matchHandler');
 var MATCH_PROCESSING = require('./matchProcessing');
 var MATCH_COMPUTATION = require('./matchComputation');
@@ -46,6 +45,11 @@ bot.on('message', async function(msg) {
     let args = argString.split(" "); //returns the text after the prefix smart move by me nc
     var arg = ((args[0].toString()).toLowerCase());
     LOG.log(4, "Got command: "+arg)
+    // if (Object.values(CONSTANTS.COMMANDS).indexOf(arg) > -1) {
+    //
+    //   return;
+    // }
+
     if(arg == CONSTANTS.COMMANDS.ELO){
       var userId = userIdFromAlias(args[1].toLowerCase())
       if(userId != null){
@@ -178,6 +182,24 @@ bot.on('message', async function(msg) {
         DISCORD_HANDLER.sendEmbedForPlayerGunStats(msg, userId)
       }
     }
+    if(arg == CONSTANTS.COMMANDS.STORE){
+      var alias = args[1].toLowerCase()
+      DISCORD_HANDLER.sendCurrentStore(msg, alias)
+    }
+    if(arg == CONSTANTS.COMMANDS.SC){
+      DISCORD_HANDLER.sendCurrentSC(msg)
+    }
+    if(arg == CONSTANTS.COMMANDS.SCA){
+      var authorized = CONSTANTS.DISCORD_ADMIN_USERS.includes(msg.member.id)
+      var alias = args[1].toLowerCase()
+      var scChange = parseInt(args[2]) || 0
+      DISCORD_HANDLER.editSC(msg, alias, scChange, authorized)
+    }
+    if(arg == CONSTANTS.COMMANDS.SCN){
+      var authorized = CONSTANTS.DISCORD_ADMIN_USERS.includes(msg.member.id)
+      var alias = args[1].toLowerCase()
+      DISCORD_HANDLER.newSCuser(msg, alias, authorized)
+    }
   }
 })
 
@@ -185,7 +207,7 @@ bot.on('message', async function(msg) {
 //   updateMining()
 // })
 
-cron.schedule('25 * * * *', async () => {
+cron.schedule('20 * * * *', async () => {
   LOG.log(2, '[AUTO] Getting Elo History for all users');
   for (var alias in subjectIdAliases) {
     // check if the property/key is defined in the object itself, not in parent

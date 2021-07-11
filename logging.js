@@ -17,7 +17,6 @@ function log(level,msg){
   }
 }
 
-
 module.exports = {
   setLogLevel:setLogLevel,
   log:log
