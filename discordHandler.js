@@ -3,6 +3,8 @@ var TABLE_HANDLER = require('./tableHandler');
 var MATCH_HANDLER = require('./matchHandler');
 var MATCH_COMPUTATION = require('./matchComputation');
 var IMAGE_HANDLER = require('./imageHandler');
+var AUTH = require('./auth');
+
 const fs = require('fs');
 
 var LOG = require('./logging');
@@ -18,6 +20,8 @@ var dateFormat = require('dateformat');
 const discord = require('discord.js');
 
 var userColors = CONSTANTS.readJSONFile('private/userColors.json')
+var USER_ACCOUNTS = CONSTANTS.readJSONFile('private/static/valAuths.json')["users"]
+var SC_TOTALS = CONSTANTS.readJSONFile('private/sc.json')
 
 function calcElo(tierAfter, rpAfter){
   return (tierAfter*100) - 300 + rpAfter;
@@ -843,6 +847,57 @@ function sendMiningHistory(msg){
   var table = TABLE_HANDLER.buildAsciiTable("Mining history. Total shares: "+totalSharesPre["totalShares"]+" / Total USD: "+totalUSD.toFixed(2), headers, data, false, false)
   msg.channel.send(table)
 }
+function sendCurrentStore(msg, alias){
+  if(USER_ACCOUNTS[alias] != null){
+    var cr = USER_ACCOUNTS[alias]
+    if(cr["uid"] != undefined){
+      AUTH.getRequest("https://pd.na.a.pvp.net/store/v2/storefront/"+cr["uid"], function(body){
+        var d = body["SkinsPanelLayout"]
+        var s = d["SingleItemOffersRemainingDurationInSeconds"]
+
+        var offerString = ""
+        var os = d["SingleItemOffers"]
+        for(var o in os){
+          offerString += CONSTANTS.CONTENT.getSkinNameFromID(os[o])+" | "
+        }
+        msg.channel.send(offerString)
+      }, function(error, err2){
+        console.log("ERRR "+error, err2)
+      }, cr["username"], cr["password"])
+    }else{
+      msg.channel.send("ID not added. Tell me to add.")
+    }
+  }
+}
+function sendCurrentSC(msg){
+  var finalStr = ""
+  for (const [key, value] of Object.entries(SC_TOTALS)) {
+    finalStr += key + " - " + value + "\n"
+  }
+  msg.channel.send(finalStr)
+}
+function editSC(msg, alias, scChange, authorized){
+  let exists = alias in SC_TOTALS
+  if(!authorized || !exists){
+    msg.react("❌")
+    return;
+  }
+  SC_TOTALS[alias] += scChange
+  CONSTANTS.writeJSONFile('private/sc.json', SC_TOTALS)
+  msg.react("✅")
+  return;
+}
+function newSCuser(msg, alias, authorized){
+  let exists = alias in SC_TOTALS
+  if(!authorized || exists){
+    msg.react("❌")
+    return;
+  }
+  SC_TOTALS[alias] = 0
+  CONSTANTS.writeJSONFile('private/sc.json', SC_TOTALS)
+  msg.react("✅")
+  return;
+}
 module.exports = {
   sendEmbedForEloHistory:sendEmbedForEloHistory,
   sendEmbedForPlayerStats:sendEmbedForPlayerStats,
@@ -853,5 +908,9 @@ module.exports = {
   sendMessageForAllParties:sendMessageForAllParties,
   sendImageForLatestCompetitiveMatch: sendImageForLatestCompetitiveMatch,
   sendMiningCalculations:sendMiningCalculations,
-  sendMiningHistory:sendMiningHistory
+  sendMiningHistory:sendMiningHistory,
+  sendCurrentStore:sendCurrentStore,
+  sendCurrentSC:sendCurrentSC,
+  editSC:editSC,
+  newSCuser:newSCuser
 }

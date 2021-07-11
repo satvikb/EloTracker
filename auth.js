@@ -9,9 +9,9 @@ var latestEntitlements = ""
 var latestToken = ""
 var expireTime = 0
 
-function getUserAuth(completion){
-  let username = process.env.VAL_USERNAME
-  let password = process.env.PASSWORD
+function getUserAuth(completion, error, username, password){
+  username = username || process.env.VAL_USERNAME
+  password = password || process.env.PASSWORD
   var userAuthCache = authCacheData[username]
   var expired = true;
   if(userAuthCache != undefined){
@@ -60,8 +60,8 @@ function getUserAuth(completion){
       }
       initialAuthOpts.method = "PUT"
       request(initialAuthOpts, function(err1, res, body1) {
-        if(body1["error"] != undefined){
-          msg.channel.send("Bad username/password. Contact account owner.\nThe API might also be down.")
+        if(body1 && body1["error"] != undefined){
+          error("Bad username/password. Contact account owner.\nThe API might also be down.")
         }else{
           let returnData = body1["response"]["parameters"]["uri"]
           let rDS = returnData.split('#')[1];
@@ -129,13 +129,13 @@ function requestOptions(url, ent, tok){
           'Authorization': 'Bearer '+tok,
           'X-Riot-Entitlements-JWT': ent,
           'X-Riot-ClientPlatform':"ewogICAgInBsYXRmb3JtVHlwZSI6ICJQQyIsCiAgICAicGxhdGZvcm1PUyI6ICJXaW5kb3dzIiwKICAgICJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwKICAgICJwbGF0Zm9ybUNoaXBzZXQiOiAiVW5rbm93biIKfQ==",
-          'X-Riot-ClientVersion':'release-02.06-shipping-13-539501'
+          'X-Riot-ClientVersion':'release-02.09-shipping-14-560778'
       },
   }
   return options
 }
 
-function getRequest(url, completion, error){
+function getRequest(url, completion, error, username, password){
   getUserAuth(function(ent, tok){
     let options = requestOptions(url, ent, tok)
 
@@ -146,7 +146,9 @@ function getRequest(url, completion, error){
         error(err, err2)
       }
     })
-  })
+  }, function(errStr){
+    error(errStr)
+  }, username, password)
 }
 
 function getRequestPromise(url, ent, tok){

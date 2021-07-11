@@ -108,6 +108,17 @@ function writeJSONFile(path, object){
   fs.writeFileSync(path, JSON.stringify(object, null, 2) , 'utf-8');
 }
 
+function getSkinNameFromID(id){
+  var ss = contentData["SkinLevels"];
+  for (var i = 0; i < ss.length; i++) {
+    //console.log(ss[i]["Name"] + " "+ss[i]["ID"].toLowerCase()+"_"+id)
+    if(ss[i]["ID"].toLowerCase() == id){
+      return ss[i]["Name"]
+    }
+  }
+  return "Not found"
+}
+
 module.exports = {
   readJSONFile:readJSONFile,
   writeJSONFile:writeJSONFile,
@@ -199,7 +210,11 @@ module.exports = {
     HISTORYIMAGE:"lm", // latestmatch,
     MINING:"mining",
     MININGHISTORY:"mininghistory",
-    GUNS:"guns"
+    GUNS:"guns",
+    STORE:"store",
+    SC:"sc",
+    SCA:"sca", // sc add,
+    SCN:"scn" // sc new
   },
   DISCORD_ADMIN_USERS:["295701594715062272"],
   CONTENT:{
@@ -210,6 +225,7 @@ module.exports = {
     MAP_NAMES: MAP_NAMES,
     MAP_SPLASHES: MAP_SPLASHES,
     RANK_IMAGES: RANK_IMAGES,
-    GUN_NAMES: GUN_NAMES
+    GUN_NAMES: GUN_NAMES,
+    getSkinNameFromID:getSkinNameFromID
   }
 }

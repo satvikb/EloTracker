@@ -97,7 +97,10 @@ function getPartyDataForParty(members, wildcard){
 function computeAggregate(){
   computeTotalStats()
 }
+// TODO
+function seasonIdFromPlaytime(){
 
+}
 // TODO take into account alts
 function computeTotalStats(){
   var statsData = {}
@@ -470,7 +473,19 @@ function computeTotalStats(){
 
   // remove the data for users with less than N games played
   var filteredStats = Object.keys(statsData).reduce(function (filteredStats, key) {
-    if (statsData[key]["stats"]["totalGamesPlayed"] >= 0) filteredStats[key] = statsData[key];
+    if (statsData[key]["stats"]["totalGamesPlayed"] > 1){
+       filteredStats[key] = statsData[key];
+    }else{
+      // if only one game played, the only data we need for this user is the name, and maybe the last match played
+      var filteredPlayer = {}
+      var gameName = statsData[key]["gameName"]
+      var tagLine = statsData[key]["tagLine"]
+      var latestMatchTime = statsData[key]["latestMatchTime"]
+      filteredPlayer["gameName"] = gameName
+      filteredPlayer["tagLine"] = tagLine
+      filteredPlayer["latestMatchTime"] = latestMatchTime
+      filteredStats[key] = filteredPlayer
+    }
     return filteredStats;
   }, {});
 
