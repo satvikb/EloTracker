@@ -1,2 +1,2 @@
 # Elo Tracker
-Bot to show Valorant elo
+Discord bot to track Valorant matches and elo over time. Offers comprehensive graphs and statistics for matches played.
