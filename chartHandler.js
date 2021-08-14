@@ -71,6 +71,7 @@ function makeAnnotationsForEloMarkers(lowest, highest){
     type: 'line',
     scaleID: 'x-axis-0',
     mode:"vertical",
+
     value: new Date(1614694500000),
     borderColor: 'blue',
     borderWidth: 1,
@@ -85,7 +86,27 @@ function makeAnnotationsForEloMarkers(lowest, highest){
       yAdjust:50
     }
   }
-  annotations.push(act2Marker)
+  var e3act1Marker = {
+    type: 'line',
+    scaleID: 'x-axis-0',
+    mode:"vertical",
+
+    value: new Date(1624367700000),
+    borderColor: 'blue',
+    borderWidth: 1,
+    label:{
+      enabled: true,
+      content:"EP 3 START",
+      position:"start",
+      font:{
+        size:12,
+        color:"#888",
+      },
+      yAdjust:50
+    }
+  }
+
+  annotations.push(e3act1Marker)
 
 
   return annotations
@@ -94,8 +115,12 @@ function buildEloChart(eloData, userName, userColor){
   if(eloData["elo"].length == 0){
     return null
   }
+  let CUTOFF = 150
+  eloData["elo"] = eloData["elo"].slice(0, CUTOFF).reverse()
+  eloData["dates"] = eloData["dates"].slice(0, CUTOFF).reverse()
+
   var eloMin = Math.min(...eloData["elo"])
-  var eloMax = Math.max(...eloData["elo"])
+  var eloMax = Math.max(...eloData["elo"].slice(0, CUTOFF).reverse())
 
   var sum = 0;
   for(var i = 0; i < eloData["elo"].length; i++){
@@ -164,7 +189,7 @@ function buildEloChart(eloData, userName, userColor){
     "borderColor": userColor,
     "backgroundColor": userColor,
     "fill": false,
-    "data": eloData["elo"].reverse(),
+    "data": eloData["elo"],
     "borderWidth":1,
     "pointRadius":1
   }
@@ -176,7 +201,7 @@ function buildEloChart(eloData, userName, userColor){
   var chartObject = {
     "type":"line",
     "data":{
-      "labels":eloData["dates"].reverse(),//Array.from(Array(eloData.length).keys()),
+      "labels":eloData["dates"],//Array.from(Array(eloData.length).keys()),
       "datasets":chartDatasetArray
     },
     "options":chartOptions
